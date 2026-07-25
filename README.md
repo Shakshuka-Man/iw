@@ -50,7 +50,7 @@ There are multiple ways to use this, depending on how comfortable you are with c
 
 This repo contains the following tutorials to demonstrate world development: 
 
-- **[Tutorial 1 — `iw`: the data model]((https://shakshuka-man.github.io/iw/lab/index.html?path=worlds/tutorial_iw/README.md))**: This tutorial covers the basics
+- **[Tutorial 1 — `iw`: the data model](https://shakshuka-man.github.io/iw/lab/index.html?path=worlds/tutorial_iw/README.md)**: This tutorial covers the basics
   of creating worlds and the objects within them.
 - **[Tutorial 2 — automation](https://shakshuka-man.github.io/iw/lab/index.html?path=worlds/tutorial_advanced/README.md)**: This tutorial covers how to leverage
   this repo to make developing large worlds more efficient that using IW's built-in editor.
