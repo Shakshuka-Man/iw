@@ -1,0 +1,23 @@
+# Generated world JSON (build.py) and the generated notebooks (notebooks.py). Artifacts, not sources --
+# checking them in would put a large diff on every commit that touches a world.
+out/
+dist/
+
+# The built JupyterLite site (site.py), and jupyterlite's build cache.
+_site/
+.jupyterlite.doit.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Stray logs from unrelated local tooling
+logs/

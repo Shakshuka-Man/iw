@@ -1,0 +1,40 @@
+{
+  "data": {
+    "layout-restorer:data": {
+      "main": {
+        "dock": {
+          "type": "tab-area",
+          "currentIndex": 0,
+          "widgets": ["markdownviewer-widget:welcome.md"]
+        },
+        "current": "markdownviewer-widget:welcome.md"
+      },
+      "down": {
+        "size": 0,
+        "collapsed": true,
+        "widgets": []
+      },
+      "left": {
+        "collapsed": false,
+        "visible": true,
+        "current": "filebrowser",
+        "widgets": ["filebrowser", "running-sessions", "@jupyterlab/toc:plugin"]
+      },
+      "right": {
+        "collapsed": true,
+        "visible": true,
+        "widgets": ["jp-property-inspector"]
+      },
+      "relativeSizes": [0.2, 0.8, 0]
+    },
+    "markdownviewer-widget:welcome.md": {
+      "data": {
+        "path": "welcome.md",
+        "factory": "Markdown Preview"
+      }
+    }
+  },
+  "metadata": {
+    "id": "default"
+  }
+}

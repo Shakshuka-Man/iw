@@ -1,0 +1,455 @@
+{
+    "favorite": false,
+    "title": "WORLD_TITLE",
+    "description": "WORLD_DESCRIPTION",
+    "background": "BACKGROUND_STORY",
+    "instructions": "MAIN_INSTRUCTIONS",
+    "authorStyle": "AUTHOR_STYLE",
+    "recommendedAIModel": null,
+    "firstInput": "FIRST_ACTION",
+    "objective": "OBJECTIVE",
+    "imageModel": "manticore",
+    "imageStyle": "photo_1",
+    "illustrationStyleNonCharacterLowPriority": "",
+    "illustrationStyleNonCharacterHighPriority": "",
+    "illustrationStyleCharacterLowPriority": "",
+    "illustrationStyleCharacterHighPriority": "",
+    "imageStyleCharacterPre": "ILLUSTRATION_CHARACTER_PROMPT_BEGINNING",
+    "imageStyleCharacterPost": "ILLUSTRATION_CHARACTER_PROMPT_ENDING",
+    "imageStyleNonCharacterPre": "ILLUSTRATION_OBJECT_PROMPT_BEGINNING",
+    "imageStyleNonCharacterPost": "ILLUSTRATION_OBJECT_PROMPT_ENDING",
+    "mature": false,
+    "nsfw": false,
+    "contentWarnings": "CONTENT_WARNINGS",
+    "enableAISpecificInstructionBlocks": true,
+    "previewImage": "",
+    "fullSizePreviewImage": "",
+    "previewImageOptions": [
+    ],
+    "fullSizePreviewImageOptions": [
+    ],
+    "currentPreviewImageIndex": 0,
+    "imagePromptDetails": {
+        "illustrClothes": "WORLD_PREVIEW_IMAGE_CHARACTER_CLOTHING",
+        "illustrSetting": "WORLD_PREVIEW_IMAGE_SETTING",
+        "illustrSubject": "",
+        "illustrAppearance": "WORLD_PREVIEW_IMAGE_APPEARANCE",
+        "illustrIsCharacter": true,
+        "illustrExpressionPosition": "WORLD_PREVIEW_IMAGE_CHARACTER_EXPRESSION"
+    },
+    "permissionsOnceShared": {
+        "sharing": true,
+        "editing": true
+    },
+    "allowChangeCharacterName": true,
+    "allowChangeCharacterDescription": true,
+    "allowChangeCharacterSkills": false,
+    "allowChangeCharacterItemValues": false,
+    "allowChangeCharacterPortrait": true,
+    "allowChangeCharacterNewPortrait": true,
+    "descriptionRequest": "CUSTOM_DESCRIPTION_INSTRUCTIONS",
+    "summaryRequest": "CUSTOM_SUMMARIZATION_INSTRUCTIONS",
+    "schemaVersion": 2.1,
+    "charSelectText": "CHARACTER_SELECTION_SCREEN_TEXT",
+    "skills": [
+        "Generic skill"
+    ],
+    "possibleCharacters": [
+        {
+            "name": "PLAYER_CHARACTER_NAME",
+            "description": "PLAYER_CHARACTER_DESCRIPTION",
+            "portrait": "",
+            "portraitPromptDetails": {
+                "illustrClothes": "PLAYER_CHARACTER_IMAGE_CLOTHING",
+                "illustrSetting": "PLAYER_CHARACTER_IMAGE_SETTING",
+                "illustrAppearance": "PLAYER_CHARACTER_IMAGE_APPEARANCE",
+                "illustrExpressionPosition": "PLAYER_CHARACTER_IMAGE_EXPRESSION"
+            },
+            "fullSizePortrait": "",
+            "portraitOptions": [
+            ],
+            "fullSizePortraitOptions": [
+            ],
+            "currentPortraitIndex": 0,
+            "characterId": "coVv0XIs",
+            "skills": {
+                "Generic skill": 3
+            },
+            "initialTrackedItemValues": [
+                {
+                    "id": "Pvz7oxib9",
+                    "visibility": "ai_only",
+                    "name": "TRACKED_ITEM_2",
+                    "initialPCValue": "TRACKED_ITEM_CHOICE",
+                    "initialValueBasedOnPC": "character"
+                }
+            ]
+        },
+        {
+            "name": "Alt character",
+            "description": "",
+            "portrait": null,
+            "portraitPromptDetails": {},
+            "fullSizePortrait": null,
+            "portraitOptions": [
+                null
+            ],
+            "fullSizePortraitOptions": [
+                null
+            ],
+            "currentPortraitIndex": 0,
+            "characterId": "mg6SSDIV",
+            "skills": {
+                "Generic skill": 3
+            },
+            "initialTrackedItemValues": [
+                {
+                    "id": "Pvz7oxib9",
+                    "visibility": "ai_only",
+                    "name": "TRACKED_ITEM_2",
+                    "initialPCValue": "",
+                    "initialValueBasedOnPC": "character"
+                }
+            ]
+        }
+    ],
+    "triggerEvents": [
+        {
+            "id": "v/cxU5VA",
+            "name": "Setting tracked item",
+            "triggerEffects": [
+                {
+                    "id": "2002f094-943b-a4a9-47e4-2d68dc66082b",
+                    "data": {
+                        "action": "set",
+                        "newValue": "asdf",
+                        "replaceWith": "",
+                        "trackedItemID": "GoHrnxhMI"
+                    },
+                    "type": "effectSetTrackedItemValue",
+                    "trackedItemID": "GoHrnxhMI"
+                },
+                {
+                    "id": "ea6b855f-6de6-f03a-b55e-a52a16f160f3",
+                    "data": {
+                        "choices": "asdf\nqwerty",
+                        "message": "aaaaa",
+                        "updateMode": "replace",
+                        "maxSelections": null,
+                        "minSelections": null,
+                        "selectionMode": "single",
+                        "valueDelimiter": "newline",
+                        "targetTrackedItemId": "GoHrnxhMI"
+                    },
+                    "type": "effectPresentChoice"
+                },
+                {
+                    "id": "f03dbbc4-6b10-5c7c-6728-a001ee6a5f3d",
+                    "data": {
+                        "choices": "asdfg\n",
+                        "message": "bbbbbb",
+                        "updateMode": "replace",
+                        "maxSelections": 3,
+                        "minSelections": 2,
+                        "selectionMode": "multiple",
+                        "valueDelimiter": "newline",
+                        "targetTrackedItemId": "Pvz7oxib9"
+                    },
+                    "type": "effectPresentChoice"
+                },
+                {
+                    "id": "dec81944-1250-f420-dec6-c4f9b2c5a843",
+                    "data": {
+                        "choices": "asdfasfsadfasd",
+                        "message": "cccccccccccc",
+                        "updateMode": "replace",
+                        "maxSelections": 2,
+                        "minSelections": 1,
+                        "selectionMode": "multiple",
+                        "valueDelimiter": "comma",
+                        "targetTrackedItemId": "MkE7x1ENp"
+                    },
+                    "type": "effectPresentChoice"
+                },
+                {
+                    "id": "390a3636-ae78-9707-72e7-50e6152b104f",
+                    "data": {
+                        "inputMode": "single",
+                        "requestText": "ddddddddd",
+                        "requiresInput": true,
+                        "targetTrackedItemId": "I9iEzDuuk"
+                    },
+                    "type": "effectRequestInput"
+                },
+                {
+                    "id": "f8263bbb-76d1-0e18-ec76-2d2983a97c62",
+                    "data": {
+                        "inputMode": "multi",
+                        "requestText": "eeeeeeeeeee",
+                        "requiresInput": false,
+                        "targetTrackedItemId": "GoHrnxhMI"
+                    },
+                    "type": "effectRequestInput"
+                }
+            ],
+            "triggerConditions": [
+                {
+                    "id": "09de7c7d-05ce-13e0-8d0f-9c3db104c52a",
+                    "data": 3,
+                    "type": "triggerOnTurn",
+                    "category": "condition"
+                }
+            ]
+        },
+        {
+            "id": "qhXSwW5q",
+            "name": "New trigger event",
+            "triggerEffects": [],
+            "triggerConditions": []
+        },
+        {
+            "id": "0N/QUPIg",
+            "name": "On situation ",
+            "advancedLogic": true,
+            "triggerEffects": [
+                {
+                    "id": "c8b9b6fc-2039-af6b-4f2d-62bb0dfc0041",
+                    "data": "New main instructions ",
+                    "type": "effectChangeMainInstructions"
+                },
+                {
+                    "id": "6a98ce89-6966-b84d-678d-ac35e2969bcd",
+                    "data": {
+                        "id": "C07hSs5of",
+                        "content": "New eib contents"
+                    },
+                    "type": "effectModifyInstructionBlock"
+                }
+            ],
+            "triggerConditions": [
+                {
+                    "id": "12bbdab4-032a-fe31-29fe-837658a13733",
+                    "data": "Situation 2",
+                    "type": "triggerOnEvent",
+                    "category": "condition"
+                }
+            ]
+        },
+        {
+            "id": "qwjASDDa",
+            "name": "Complex logic",
+            "advancedLogic": true,
+            "triggerEffects": [],
+            "triggerConditions": [
+                {
+                    "id": "d1101e6a-5272-355b-d91a-792df174a495",
+                    "data": [
+                        {
+                            "id": "44d37b6a-8dd6-b0df-a6ea-54918569b45d",
+                            "data": {
+                                "inequality": "at_least",
+                                "requiredValue": "1",
+                                "trackedItemID": "turn_number",
+                                "textComparison": "contains"
+                            },
+                            "type": "triggerOnTrackedItem",
+                            "category": "condition",
+                            "inequality": "at_least",
+                            "trackedItemID": "turn_number"
+                        },
+                        {
+                            "id": "8745f996-d5a4-e7bb-7ca2-698692b5ae9b",
+                            "data": {
+                                "inequality": "at_most",
+                                "requiredValue": "4",
+                                "trackedItemID": "skill_generic_skill",
+                                "textComparison": "contains"
+                            },
+                            "type": "triggerOnTrackedItem",
+                            "category": "condition",
+                            "inequality": "at_most",
+                            "trackedItemID": "skill_generic_skill"
+                        },
+                        {
+                            "id": "fba6a25d-1d1f-886a-60f3-5f96d5391787",
+                            "data": [
+                                {
+                                    "id": "e60a7320-5c57-04e5-9313-745cc8697551",
+                                    "data": 7,
+                                    "type": "triggerOnTurn",
+                                    "category": "condition"
+                                },
+                                {
+                                    "id": "3b1f3624-ddae-883b-cc63-d6d957925749",
+                                    "data": {
+                                        "inequality": "not_equal",
+                                        "requiredValue": "5",
+                                        "trackedItemID": "skill_generic_skill",
+                                        "textComparison": "contains"
+                                    },
+                                    "type": "triggerOnTrackedItem",
+                                    "category": "condition",
+                                    "inequality": "not_equal",
+                                    "trackedItemID": "skill_generic_skill"
+                                },
+                                {
+                                    "id": "c90e6f5a-911a-fb1c-4142-3d59f01346cc",
+                                    "data": {
+                                        "inequality": "is_exactly",
+                                        "requiredValue": "Asdf",
+                                        "trackedItemID": "GoHrnxhMI",
+                                        "textComparison": "contains"
+                                    },
+                                    "type": "triggerOnTrackedItem",
+                                    "category": "condition",
+                                    "trackedItemID": "GoHrnxhMI"
+                                }
+                            ],
+                            "category": "logic",
+                            "operator": "or"
+                        }
+                    ],
+                    "category": "logic",
+                    "operator": "and"
+                }
+            ]
+        },
+        {
+            "id": "w+81pNqA",
+            "name": "Win trigger",
+            "triggerEffects": [
+                {
+                    "id": "d17229cb-c633-def2-6bd8-0315288a1a98",
+                    "data": true,
+                    "type": "effectEndsGame"
+                }
+            ],
+            "triggerConditions": [
+                {
+                    "id": "b83b35e2-1fb2-0a0a-9ffa-970bf8f64520",
+                    "data": [
+                        "coVv0XIs",
+                        "mg6SSDIV"
+                    ],
+                    "type": "triggerOnCharacter",
+                    "category": "condition"
+                }
+            ]
+        }
+    ],
+    "victoryCondition": {
+        "condition": "VICTORY_CONDITION",
+        "text": "VICTORY_TEXT",
+        "alreadyFired": false
+    },
+    "defeatCondition": {
+        "condition": "DEFEAT_CONDITION",
+        "text": "DEFEAT_TEXT",
+        "alreadyFired": false
+    },
+    "instructionBlocks": [
+        {
+            "id": "C07hSs5of",
+            "name": "EIB_NAME",
+            "content": "EIB_CONTENTS"
+        },
+        {
+            "id": "yI1co8Qyw",
+            "name": "MODEL_SPECIFIC_INSTRUCTIONS",
+            "content": "MODEL_SPECIFIC_INSTRUCITON_CONTENTS",
+            "selectedAIProfiles": [
+                "smilodon",
+                "lynx",
+                "massivecat",
+                "smilodon-thinking",
+                "grimalkin",
+                "leopard",
+                "massivecat-thinking",
+                "lynx-thinking",
+                "wampus",
+                "wildcat",
+                "leopard-2"
+            ]
+        }
+    ],
+    "loreBookEntries": [
+        {
+            "id": "JXyYGnsHY",
+            "name": "KIB_NAME",
+            "content": "KIB_CONTENT",
+            "keywords": [
+                "KIB_KEYWORDS"
+            ]
+        }
+    ],
+    "trackedItems": [
+        {
+            "id": "GoHrnxhMI",
+            "name": "TRACKED_ITEM_1",
+            "positionInList": 0,
+            "dataType": "text",
+            "visibility": "everyone",
+            "description": "TRACKED_ITEM_1_DESC",
+            "updateInstructions": "TRACKED_ITEM_1_UPDATE_INSTRUCTIONS",
+            "initialValue": "TRACKED_ITEM_1_INITIAL_VALUE",
+            "initialValueBasedOnPC": "same",
+            "autoUpdate": true
+        },
+        {
+            "id": "Pvz7oxib9",
+            "name": "TRACKED_ITEM_2",
+            "positionInList": 1,
+            "dataType": "number",
+            "visibility": "ai_only",
+            "description": "",
+            "updateInstructions": "",
+            "initialValue": "",
+            "initialValueBasedOnPC": "character",
+            "autoUpdate": false
+        },
+        {
+            "id": "MkE7x1ENp",
+            "name": "TRACKED_ITEM_3",
+            "positionInList": 2,
+            "dataType": "xml",
+            "visibility": "player_only",
+            "description": "",
+            "updateInstructions": "",
+            "initialValue": "TRACKED_ITEM_1_DEFAULT_VALUE",
+            "initialValueBasedOnPC": "player",
+            "autoUpdate": false
+        },
+        {
+            "id": "I9iEzDuuk",
+            "name": "TRACKED_ITEM_4",
+            "positionInList": 3,
+            "dataType": "text",
+            "visibility": "hidden",
+            "description": "",
+            "updateInstructions": "",
+            "initialValue": "",
+            "initialValueBasedOnPC": "same",
+            "autoUpdate": false
+        }
+    ],
+    "NPCs": [
+        {
+            "id": "RaQXARwiZ",
+            "positionInList": 0,
+            "name": "OTHER_CHARACTER_NAME",
+            "detail": "OTHER_CHARACTER_DETAIL",
+            "one_liner": "OTHER_CHARACTER_BRIEF_SUMMARY",
+            "appearance": "OTHER_CHARACTER_APPEARANCE",
+            "location": "OTHER_CHARACTER_LOCATION",
+            "secret_info": "OTHER_CHARACTER_SECRET_INFORMATION",
+            "names": [
+                "OTHER_CHARACTER_NAMELIST"
+            ],
+            "img_appearance": "The green lantern, colored red",
+            "img_clothing": "red outfit"
+        }
+    ],
+    "autoAdvanceVersion": true,
+    "version": "1.13",
+    "designNotes": "DESIGN_NOTES"
+}

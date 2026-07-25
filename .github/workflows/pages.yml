@@ -1,0 +1,60 @@
+name: Build and deploy the site
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# For actions/deploy-pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; don't cancel a running one, it would leave the site half-published.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements-site.txt
+
+      # The docs are generated from the worlds, and the wiki pages from the docs. If a world changed and
+      # nobody re-ran the generators, the committed pages are lying -- say so here rather than deploy them.
+      - name: The committed docs are up to date
+        run: |
+          python notebooks.py --check
+          python docs.py --check
+
+      # Every world still compiles, and its plot still passes the reachability and content checks.
+      - name: Every world builds
+        run: python build.py
+
+      - name: Build the JupyterLite site
+        run: python site.py
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    # A pull request gets built, to catch breakage, but only main is published.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

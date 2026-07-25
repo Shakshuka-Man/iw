@@ -1,0 +1,1038 @@
+This is the third of three tutorials, and it assumes [[tutorial-1-iw|tutorial 1]] and [[tutorial-2-advanced|tutorial 2]].
+
+<code>plot</code> is a compiler. You describe a story as '''stages''' and the '''transitions''' between them; it emits the hidden tracked items and the trigger events that make the engine run it — a stage tracker, a trigger per stage, a trigger per transition, a per-turn gate so two transitions cannot fire at once. Tutorial 2 builds that bookkeeping by hand, to show there is nothing magic in it; the other worlds let the compiler write it.
+
+Five worlds, in increasing order of what they ask of the compiler.
+
+{| class="wikitable"
+!  !! notebook !! the idea
+|-
+| 1 || <code>tutorial_plot_1_simple</code> || Stages and transitions
+|-
+| 2 || <code>tutorial_plot_2_behind_the_scenes</code> || Behind the scenes
+|-
+| 3 || <code>tutorial_plot_3_branching</code> || Branching and reconverging
+|-
+| 4 || <code>tutorial_plot_4_characters</code> || One plot, different people
+|-
+| 5 || <code>tutorial_plot_5_multiple_plotlines</code> || Many plots at once
+|}
+
+== Plot tutorial 1 — Stages and transitions ==
+
+A story in <code>plot</code> is a set of stages and the transitions between them. A '''stage''' is a state the plot can be in; a '''transition''' is how the story gets from one stage to the next. Each plot stage can also have '''details''', which controls what information is given to the Storyteller AI each turn.
+
+In this tutorial we build a simple, linear story: a knight sets out to kill an immortal dark lord, learns how his immortality can be broken, breaks it, and kills him.
+
+<syntaxhighlight lang="python">
+import pathlib
+import iw
+from iw import plot
+world = iw.World(title="The Dark Lord")
+</syntaxhighlight>
+
+=== Building the plot stages ===
+
+The first thing we will do is define the plot stages. Our planned story beats are:
+* The protagonist needs to search for the secret to breaking the dark lord's immortality
+* The protagonist has found the secret to breaking the dark lord's immortality, and needs to actually break it
+* The protagonist has broken the dark lord's immortality, but need to kill him to save the land
+* The protagonist has killed the dark lord and freed the land
+Each of these gets their own <code>PlotStage</code> object.
+
+<syntaxhighlight lang="python">
+STAGE_1 = plot.PlotStage(description="Finding the dark lord's secret")
+STAGE_2 = plot.PlotStage(description="Breaking the dark lord's immortality")
+STAGE_3 = plot.PlotStage(description="Defeating the dark lord")
+STAGE_4 = plot.PlotStage(description="Victory")
+</syntaxhighlight>
+
+Now that we have created the plot stages, we need to decide how we want to transition between them. In this example, we have a simple linear plot, we go from <code>STAGE_1</code> to <code>STAGE_2</code>, then to <code>STAGE_3</code> and finally to <code>STAGE_4</code>.
+
+We need to tell the AI how we want these transitions to happen. You can do some complex logic, but for this basic example, we will just use trigger situations. Each <code>PlotTransition</code> is implemented as an IW trigger, and any trigger logic can be added to a PlotTransition to add conditions or effects.
+
+Some of our transitions will have a transition event. This causes the trigger to tell the AI what should happen next turn.
+
+<syntaxhighlight lang="python">
+TO_STAGE_2 = plot.PlotTransition(
+    starting_stage=STAGE_1,
+    ending_stage=STAGE_2,
+    trigger_on_scenario="I enter the forbidden library",
+    transition_event=(
+        "I search the library and find an evil tome of magic. Reading it, I discover that the dark lord's "
+        "immortality spell is tied to an enormous corrupted oak tree."
+    )
+)
+TO_STAGE_3 = plot.PlotTransition(
+    starting_stage=STAGE_2,
+    ending_stage=STAGE_3,
+    trigger_on_scenario="I destroy the corrupted oak tree",
+    transition_event=(
+        "I destroy the oak tree, tearing out its roots and burning it to ash. As the last splinter erupts "
+        "into flame, I see the clouds overhead clear, and know that the dark lord is vulnerable."
+    )
+)
+TO_STAGE_4 = plot.PlotTransition(
+    starting_stage=STAGE_3,
+    ending_stage=STAGE_4,
+    trigger_on_scenario="I slay the dark lord",
+    end_game=True,        # this transition wins the game
+    can_continue=True,    # ...but the player may keep playing in the freed land
+)
+</syntaxhighlight>
+
+We have defined the plot stages and the transitions, and we could stop here if we wanted, but we wouldn't have a very interesting plot if we did. We can make things more interesting by using plot details.
+
+For each plot stage, we can also give it a <code>PlotStageDetails</code> object. These are used to define what the contents of instruction blocks, tracked items, and other objects should be at each stage of the plot.
+
+In our case, we will have two objects that we want to change as the plot progresses. We will have an instruction block that gives the current objective, and a tracked item that gives the current state of the dark lord.
+
+<syntaxhighlight lang="python">
+PLOT_INSTRUCTIONS=iw.InstructionBlock(name="Plot stage specific instructions")
+DARK_LORD_STATUS = iw.TrackedItem(
+    name="Dark Lord Status",
+    dataType=iw.TrackedItemDataType.TEXT,
+    visibility=iw.TrackedItemVisibility.EVERYONE,
+)
+world.instructionBlocks.append(PLOT_INSTRUCTIONS)
+world.trackedItems.append(DARK_LORD_STATUS)
+
+STAGE_1.plot_details = plot.PlotStageDetails(
+    instruction_blocks={PLOT_INSTRUCTIONS:
+        "I am a knight in a fantasy land. The evil dark lord rules like a tyrant. He has an immortality "
+        "spell that protects him. I must travel to the forbidden library to find the secret to breaking it.",},
+    tracked_items={DARK_LORD_STATUS: "immortal"},
+)
+
+STAGE_2.plot_details = plot.PlotStageDetails(
+    instruction_blocks={PLOT_INSTRUCTIONS:
+        "I am a knight in a fantasy land. The dark lord's immortality spell is tied to an enormous "
+        "corrupted oak tree. I can break the spell, and make him vulnerable, by destroying that tree.",},
+    tracked_items={DARK_LORD_STATUS: "immortal"},
+)
+
+STAGE_3.plot_details = plot.PlotStageDetails(
+    instruction_blocks={PLOT_INSTRUCTIONS:
+        "I am a knight in a fantasy land. I have broken the dark lord's spell of immortality, and now he "
+        "is vulnerable. I must kill him to liberate the land.",},
+    tracked_items={DARK_LORD_STATUS: "vulnerable"},
+)
+
+STAGE_4.plot_details = plot.PlotStageDetails(
+    instruction_blocks={PLOT_INSTRUCTIONS:
+        "I am a knight in a fantasy land. I have defeated the evil dark lord, and freed everybody from "
+        "his tyranny.",},
+    tracked_items={DARK_LORD_STATUS: "dead"},
+)
+</syntaxhighlight>
+
+Now that we have created everything needed for our plot, we can add it to our world. Using <code>plot.add_plot</code> will create all the tracked items, triggers and other behind-the-scenes machinery to make this plot work.
+
+<syntaxhighlight lang="python">
+plot.add_plot(
+    world=world,
+    plot_stages=[STAGE_1, STAGE_2, STAGE_3, STAGE_4],
+    plot_transitions=[TO_STAGE_2, TO_STAGE_3, TO_STAGE_4],
+)
+</syntaxhighlight>
+
+=== Output ===
+
+When we generate the summary of the world, we can see that the count of triggers and tracked items has increased from the plot engine adding additional objects to implement the plot.
+
+In the next tutorial, we will look into what happens behind the scenes here.
+
+<syntaxhighlight lang="python">
+print(world.summary())
+pathlib.Path("tutorial_plot_1_simple.json").write_text(world.to_json())
+</syntaxhighlight>
+
+== Plot tutorial 2 — Behind the scenes ==
+
+In the last tutorial, we used the plot engine to construct a linear plot. We created some <code>PlotStage</code>, <code>PlotTransition</code> and <code>PlotStageDetails</code> objects, and then the plot engine translated those into the native Infinite Worlds objects to implement the plot.
+
+In this tutorial, we will be exploring what the plot engine did, by recreating the same output by creating the Infinite Worlds objects ourselves. This tutorial doesn't show off any new features compared to the last one, it just shows off what is happening behind the scenes.
+
+<syntaxhighlight lang="python">
+import pathlib
+import iw
+
+world = iw.World(title="The Dark Lord")
+</syntaxhighlight>
+
+=== The player-facing objects ===
+
+We start by creating the instruction block and the tracked item that are updated by the <code>PlotStageDetails</code> objects.
+
+<syntaxhighlight lang="python">
+PLOT_INSTRUCTIONS=iw.InstructionBlock(name="Plot stage specific instructions")
+DARK_LORD_STATUS = iw.TrackedItem(
+    name="Dark Lord Status",
+    dataType=iw.TrackedItemDataType.TEXT,
+    visibility=iw.TrackedItemVisibility.EVERYONE,
+)
+world.instructionBlocks.append(PLOT_INSTRUCTIONS)
+world.trackedItems.append(DARK_LORD_STATUS)
+</syntaxhighlight>
+
+=== The plot state tracked items ===
+
+The plot engine always creates a tracked item that tracks the current state of the plot, and a tracked item that is used to detect if the plot state has advanced on each turn. If there are multiple plotlines in a single world (something that we will explore in a later tutorial), then we will have a plot stage tracked item and a plot change tracked item for each plotline.
+
+The value of the plot change tracked item is either 0 (if no plot change occurred this turn) or 1 (if a plot change occurred this turn).
+
+The plot state item tracks which of the plot states is considered active at any one time. The world designer can choose to provide a tracked item they have prepared in advance, or allow the plot engine to create its own tracked item to track the plot state.
+
+Each plot state is given its own unique ID, which by default is a number counting up from 1. Once again, the world designer can also give a custom ID to each of the plot stages instead of relying on the generated IDs.
+
+<syntaxhighlight lang="python">
+PLOT_STAGE = iw.TrackedItem(name="Plot Stage", dataType=iw.TrackedItemDataType.NUMBER,
+                            visibility=iw.TrackedItemVisibility.HIDDEN, initialValue="0")
+PLOT_CHANGE = iw.TrackedItem(name="Plot Change", dataType=iw.TrackedItemDataType.NUMBER,
+                             visibility=iw.TrackedItemVisibility.HIDDEN, initialValue="1")
+world.trackedItems.extend([PLOT_STAGE, PLOT_CHANGE])
+</syntaxhighlight>
+
+=== The plot situation tracked item ===
+
+When we created our plot transitions, we identified three different scenarios that could cause a plot transition. However, not all of these will be relevant at the same time, and each trigger scenario causes a bit of overhead and credit cost each turn, even if the trigger scenario is not relevant.
+
+The plot engine is clever enough to avoid wasting credits. It analyzes the plot transitions, and in this scenario it noticed that in the worst case scenario, only one trigger scenario is relevant at a time. Therefore, we can be efficient by using a tracked item for these trigger scenarios, setting the contents of it to the trigger scenario that is relevant at each stage of the plot.
+
+As above, if there are multiple plotines in a world, or a plotline that has multiple trigger scenarios that could apply at the same time, we would have multiple plot situation tracked items.
+
+<syntaxhighlight lang="python">
+PLOT_SITUATION = iw.TrackedItem(name="Plot Situation 1", dataType=iw.TrackedItemDataType.TEXT,
+                                visibility=iw.TrackedItemVisibility.HIDDEN, initialValue=" ")
+world.trackedItems.append(PLOT_SITUATION)
+</syntaxhighlight>
+
+=== The plot transition triggers ===
+
+We now construct the triggers for advancing the plot. This is where the <code>PLOT_CHANGE</code> tracked item comes into play - because we are reusing the same tracked item for multiple trigger scenarios, IW will resolve that trigger scenario as true, even if we change the value of the tracked item during trigger evaluation. Therefore, we need to use the <code>PLOT_CHANGE</code> tracked item to limit the plot to only progress one stage per turn.
+
+<syntaxhighlight lang="python">
+# Before any of the transition triggers fire, we need to reset the `PLOT_CHANGE` variable back to 0, indicating
+# that no plot changes have occurred this turn.
+#
+# The trigger requires at least one condition, so we require turn_number to be at least 1, which will always be true.
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot: reset per-turn change gate",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is("turn_number", "1", iw.Inequality.AT_LEAST)],
+    triggerEffects=[iw.tools.set_tracked_item(PLOT_CHANGE, "0")],
+))
+
+# The plot engine recognizes that stage 1 is a starting stage, as there are no transitions to stage 1. If there was
+# not a starting stage, or if there were multiple possible starting stages in the same plotline, then the plot
+# engine would throw an error instead of adding in the plotlines.
+
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot: start of game (stage 1)",
+    triggerOnStartOfGame=True,
+    canTriggerMoreThanOnce=True,
+    triggerEffects=[
+        iw.TriggerEffect(type=iw.EffectType.MODIFY_INSTRUCTION_BLOCK, data={
+            "id": PLOT_INSTRUCTIONS.id,
+            "content": "I am a knight in a fantasy land. The evil dark lord rules like a tyrant. He has an "
+                       "immortality spell that protects him. I must travel to the forbidden library to find "
+                       "the secret to breaking it.",
+        }),
+        iw.tools.set_tracked_item(DARK_LORD_STATUS, "immortal"),
+        iw.tools.set_tracked_item(PLOT_STAGE, "1"),
+        iw.tools.set_tracked_item(PLOT_SITUATION, "I enter the forbidden library"),
+    ],
+))
+
+# In addition to their declared conditions, the transitions require `PLOT_CHANGE` to be 0. In addition to
+# their declared effects, they also set `PLOT_CHANGE` to 1. As this happens after the reset above, this
+# means we can only have one plot advancement per turn.
+
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Transition 1",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[
+        iw.tools.tracked_item_is(PLOT_CHANGE, "0"),
+        iw.tools.tracked_item_is(PLOT_STAGE, "1"),
+        iw.TriggerCondition(type=iw.ConditionType.ON_EVENT, category="condition",
+                            data=PLOT_SITUATION.as_substitution()),
+    ],
+    triggerEffects=[
+        iw.tools.set_tracked_item(PLOT_CHANGE, "1"),
+        iw.tools.set_tracked_item(PLOT_STAGE, "2"),
+        iw.TriggerEffect(type=iw.EffectType.TELL_AI, data=(
+            "I search the library and find an evil tome of magic. Reading it, I discover that the dark "
+            "lord's immortality spell is tied to an enormous corrupted oak tree."
+        )),
+    ],
+))
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Transition 2",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[
+        iw.tools.tracked_item_is(PLOT_CHANGE, "0"),
+        iw.tools.tracked_item_is(PLOT_STAGE, "2"),
+        iw.TriggerCondition(type=iw.ConditionType.ON_EVENT, category="condition",
+                            data=PLOT_SITUATION.as_substitution()),
+    ],
+    triggerEffects=[
+        iw.tools.set_tracked_item(PLOT_CHANGE, "1"),
+        iw.tools.set_tracked_item(PLOT_STAGE, "3"),
+        iw.TriggerEffect(type=iw.EffectType.TELL_AI, data=(
+            "I destroy the oak tree, tearing out its roots and burning it to ash. As the last splinter "
+            "erupts into flame, I see the clouds overhead clear, and know that the dark lord is vulnerable."
+        )),
+    ],
+))
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Transition 3",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[
+        iw.tools.tracked_item_is(PLOT_CHANGE, "0"),
+        iw.tools.tracked_item_is(PLOT_STAGE, "3"),
+        iw.TriggerCondition(type=iw.ConditionType.ON_EVENT, category="condition",
+                            data=PLOT_SITUATION.as_substitution()),
+    ],
+    triggerEffects=[
+        iw.tools.set_tracked_item(PLOT_CHANGE, "1"),
+        iw.tools.set_tracked_item(PLOT_STAGE, "4"),
+        iw.TriggerEffect(type=iw.EffectType.ENDS_GAME, data=True),
+    ],
+))
+</syntaxhighlight>
+
+=== The stage content ===
+
+Each plot stage has a trigger that applies its plot details. These triggers fire every turn, and importantly they are lower in the trigger list than the transitions, and therefore are evaluated after. These triggers actually set the plot details that are relevant for the plot stage.
+
+The reason for them firing every turn is to allow for easier debugging and manual control over the world. If the player wants to skip from one plot stage to another directly, they can simply update the value of the <code>PLOT_STAGE</code> tracked item, and the following turn the details of the new plot stage will be fully applied.
+
+<syntaxhighlight lang="python">
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Stage 1",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is(PLOT_STAGE, "1")],
+    triggerEffects=[
+        iw.TriggerEffect(type=iw.EffectType.MODIFY_INSTRUCTION_BLOCK, data={
+            "id": PLOT_INSTRUCTIONS.id,
+            "content": "I am a knight in a fantasy land. The evil dark lord rules like a tyrant. He has an "
+                       "immortality spell that protects him. I must travel to the forbidden library to find "
+                       "the secret to breaking it.",
+        }),
+        iw.tools.set_tracked_item(DARK_LORD_STATUS, "immortal"),
+        iw.tools.set_tracked_item(PLOT_SITUATION, "I enter the forbidden library"),
+    ],
+))
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Stage 2",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is(PLOT_STAGE, "2")],
+    triggerEffects=[
+        iw.TriggerEffect(type=iw.EffectType.MODIFY_INSTRUCTION_BLOCK, data={
+            "id": PLOT_INSTRUCTIONS.id,
+            "content": "I am a knight in a fantasy land. The dark lord's immortality spell is tied to an "
+                       "enormous corrupted oak tree. I can break the spell, and make him vulnerable, by "
+                       "destroying that tree.",
+        }),
+        iw.tools.set_tracked_item(DARK_LORD_STATUS, "immortal"),
+        iw.tools.set_tracked_item(PLOT_SITUATION, "I destroy the corrupted oak tree"),
+    ],
+))
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Stage 3",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is(PLOT_STAGE, "3")],
+    triggerEffects=[
+        iw.TriggerEffect(type=iw.EffectType.MODIFY_INSTRUCTION_BLOCK, data={
+            "id": PLOT_INSTRUCTIONS.id,
+            "content": "I am a knight in a fantasy land. I have broken the dark lord's spell of immortality, "
+                       "and now he is vulnerable. I must kill him to liberate the land.",
+        }),
+        iw.tools.set_tracked_item(DARK_LORD_STATUS, "vulnerable"),
+        iw.tools.set_tracked_item(PLOT_SITUATION, "I slay the dark lord"),
+    ],
+))
+world.triggerEvents.append(iw.TriggerEvent(
+    name="Plot Stage 4",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is(PLOT_STAGE, "4")],
+    triggerEffects=[
+        iw.TriggerEffect(type=iw.EffectType.MODIFY_INSTRUCTION_BLOCK, data={
+            "id": PLOT_INSTRUCTIONS.id,
+            "content": "I am a knight in a fantasy land. I have defeated the evil dark lord, and freed "
+                       "everybody from his tyranny.",
+        }),
+        iw.tools.set_tracked_item(DARK_LORD_STATUS, "dead"),
+        iw.tools.set_tracked_item(PLOT_SITUATION, " "),
+    ],
+))
+</syntaxhighlight>
+
+=== Output ===
+
+We can compare what we have generated here and what we have generated in the previous tutorial, and see that the outputted JSONs are identical (except for the ids, which are randomly generated). We can also see that this is a lot more code, and a lot harder to maintain, than just using the plot engine. As we look at the more advanced plot engine features, such as branching plotlines or character specific plotlines, then the automation of the plot engine becomes even more important.
+
+<syntaxhighlight lang="python">
+print(world.summary())
+pathlib.Path("tutorial_plot_2_behind_the_scenes.json").write_text(world.to_json())
+</syntaxhighlight>
+
+== Plot tutorial 3 — Branching and reconverging ==
+
+In the previous tutorial, we looked at a straightforward linear plot. But most plots are not linear - they branch, they diverge, they converge again, and they can even loop. The plot engine handles all of these.
+
+In this example, we are going to construct a simple detective story that branches depending on how the player wants to approach the case. The plot will branch according to the following diagram:
+
+<pre>
+                 ┌─ WITNESSES ─┐
+INVESTIGATION ───┼─ EVIDENCE ──┼──▶ SUSPECT ──┬─"turn them in"───▶ JUSTICE
+                 └─ INFORMANT ─┘              └─"keep the loot"──▶ CORRUPTION
+</pre>
+
+<syntaxhighlight lang="python">
+import pathlib
+import iw
+from iw import plot
+
+world = iw.World(
+    title="The Blackwood Theft",
+    instructions="I am a detective investigating the theft of a priceless artifact from Blackwood House.",
+)
+
+plot_instructions = iw.InstructionBlock(name="Plot stage specific instructions")
+world.instructionBlocks.append(plot_instructions)
+</syntaxhighlight>
+
+=== The opening ===
+
+INVESTIGATION is the starting stage -- nothing transitions into it. From here the detective can open the case along any of three lines of inquiry.
+
+<syntaxhighlight lang="python">
+INVESTIGATION = plot.PlotStage(description="Opening the case")
+INVESTIGATION.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I am a detective newly assigned to a theft at Blackwood House: a priceless jade nightingale, gone "
+        "from a locked study. I can open the case along one of three lines -- question the household, comb "
+        "the physical evidence, or lean on a street informant."
+})
+</syntaxhighlight>
+
+=== Divergence ===
+
+We can easily have a branching transition out of the initial investigation by setting up multiple <code>PlotTransition</code> objects, each of which starts from the same stage.
+
+<syntaxhighlight lang="python">
+WITNESSES = plot.PlotStage(description="Working the household")
+TO_WITNESSES = plot.PlotTransition(
+    starting_stage=INVESTIGATION, ending_stage=WITNESSES,
+    trigger_on_scenario="I start questioning the household",
+)
+WITNESSES.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I am working the household -- taking statements, checking alibis, catching the small "
+        "contradictions between them. It is slow going, but a name is beginning to surface."
+})
+
+EVIDENCE = plot.PlotStage(description="Combing the evidence")
+TO_EVIDENCE = plot.PlotTransition(
+    starting_stage=INVESTIGATION, ending_stage=EVIDENCE,
+    trigger_on_scenario="I start combing the physical evidence",
+)
+EVIDENCE.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I am in the study with what the scene gave up -- the forced case, a single smudged print, fibres "
+        "on the sill, the timeline of the evening. Piece by piece it is pointing somewhere."
+})
+
+INFORMANT = plot.PlotStage(description="Working an informant")
+TO_INFORMANT = plot.PlotTransition(
+    starting_stage=INVESTIGATION, ending_stage=INFORMANT,
+    trigger_on_scenario="I start leaning on a street informant",
+)
+INFORMANT.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I am working my informant in the back rooms of the city, trading favours and cash for whispers. "
+        "He knows who has been moving stolen art; it is a matter of patience before he says the name."
+})
+</syntaxhighlight>
+
+=== Reconvergence ===
+
+In order to make the plot branches converge again, we can give a list of <code>PlotStage</code> objects as <code>starting_stage</code> instead of a single object. The plot engine will allow this trigger to fire from any of the starting stages.
+
+<syntaxhighlight lang="python">
+SUSPECT = plot.PlotStage(description="They have found the thief")
+TO_SUSPECT = plot.PlotTransition(
+    starting_stage=[WITNESSES, EVIDENCE, INFORMANT], ending_stage=SUSPECT,
+    trigger_on_scenario="I identify the thief and bring them in",
+    transition_event=(
+        "The threads pull together into one face: Julian Blackwood, the collector's own estranged nephew. "
+        "I find him within the day, the jade nightingale still in his rooms."
+    ),
+)
+SUSPECT.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I have identified Julian Blackwood as the thief, and found the jade nightingale in his possession. "
+        "He is frightened, desperate to make this all go away quietly. He is also rich, and I could easily "
+        "turn the screws on him to get rich, if I was willing to give up my principles."
+})
+</syntaxhighlight>
+
+=== Two ways to end it ===
+
+We fork again for the different kinds of ending.
+
+<syntaxhighlight lang="python">
+JUSTICE = plot.PlotStage(description="The honest ending")
+TO_JUSTICE = plot.PlotTransition(
+    starting_stage=SUSPECT, ending_stage=JUSTICE,
+    trigger_on_scenario="I turn Julian in to face justice",
+    end_game=True, can_continue=False,
+    transition_event="I book Julian Blackwood and log the nightingale into evidence. The case closes clean.",
+)
+JUSTICE.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions: "I turned the thief in and returned what he took. The case is closed, honestly."
+})
+
+CORRUPTION = plot.PlotStage(description="The crooked ending")
+TO_CORRUPTION = plot.PlotTransition(
+    starting_stage=SUSPECT, ending_stage=CORRUPTION,
+    trigger_on_scenario="I take the nightingale for myself and let Julian walk",
+    end_game=True, can_continue=False,
+    transition_event=(
+        "I let Julian go, and the jade nightingale goes home with me. The file records an unsolved theft, "
+        "and no one thinks to search the detective's own shelves."
+    ),
+)
+CORRUPTION.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions: "I let the thief walk and kept the prize for myself. The case is closed, dishonestly."
+})
+</syntaxhighlight>
+
+<syntaxhighlight lang="python">
+plot.add_plot(
+    world=world,
+    plot_stages=[INVESTIGATION, WITNESSES, EVIDENCE, INFORMANT, SUSPECT, JUSTICE, CORRUPTION],
+    plot_transitions=[TO_WITNESSES, TO_EVIDENCE, TO_INFORMANT, TO_SUSPECT, TO_JUSTICE, TO_CORRUPTION],
+)
+</syntaxhighlight>
+
+=== Output ===
+
+<syntaxhighlight lang="python">
+print(world.summary())
+pathlib.Path("tutorial_plot_3_branching.json").write_text(world.to_json())
+</syntaxhighlight>
+
+== Plot tutorial 4 — One plot, different people ==
+
+It is quite common that a world designer wants the player to be able to choose between different playable characters, and have the plot vary between those characters. Sometimes we want minor variations, and sometimes we want the plot to be fundamentally different for these different characters. This is something that the plot engine can handle, and this example will show off how we can have the plotline vary for multiple different characters.
+
+In this example, we have a simple fantasy setting about defeating an evil tyrant by breaking into his keep and slaying him to liberate the land. Each of the three characters has a character specific intro scene. They then converge into a stage with different descriptions based on the character, and we then have a character specific transition to the final plot stage.
+
+<pre>
+ENTRY ─▶ OUTER_KEEP ─┬──▶ THRONE_ROOM ─────────────┐
+                     │                             ├─▶ VICTORY
+                     └─(mage only)─▶ POWER_SOURCE ─┘
+</pre>
+
+<syntaxhighlight lang="python">
+import pathlib
+import iw
+from iw import plot
+
+world = iw.World(
+    title="The Tyrant's Keep",
+    instructions="I am a hero who has come to the keep of a cruel tyrant to end his reign.",
+)
+
+plot_instructions = iw.InstructionBlock(name="Plot stage specific instructions")
+world.instructionBlocks.append(plot_instructions)
+</syntaxhighlight>
+
+=== The characters ===
+
+We will have three different playable characters, each of which will have a different experience as the plot develops.
+
+<syntaxhighlight lang="python">
+warrior = iw.PossibleCharacter(name="Sir Garran", description="A seasoned warrior and master of the blade.")
+mage = iw.PossibleCharacter(name="Lyra", description="A mage who feels hidden magic and can shapeshift into beasts.")
+thief = iw.PossibleCharacter(name="Sable", description="A thief at home in sewers, shadows, and other people's houses.")
+world.possibleCharacters.extend([warrior, mage, thief])
+</syntaxhighlight>
+
+=== Character specific plot details ===
+
+The initial plot stage is getting into the keep. Each of our three characters has different strengths and weaknesses, and so we will want a different instruction block for each that describes their method for entering the keep.
+
+Where before we were using the <code>plot_details</code> attribute of a <code>PlotStage</code>, we are now using a different attribute: <code>character_specific_plot_details</code>. This allows us to specify that some plot details are relevant to some characters but not others.
+
+<syntaxhighlight lang="python">
+ENTRY = plot.PlotStage(description="Getting into the keep")
+ENTRY.character_specific_plot_details = [
+    plot.PlotStageDetails(characters=warrior, instruction_blocks={
+        plot_instructions:
+            "I am a warrior, come to end the tyrant. His gate is held by two guards, and I mean to go "
+            "through them -- I am a seasoned warrior, easily able to defeat them."
+    }),
+    plot.PlotStageDetails(characters=thief, instruction_blocks={
+        plot_instructions:
+            "I am a thief, come to end the tyrant. I will not go near his guarded gate: there is a sewer "
+            "grate beneath the east wall, and I can use it to enter the keep silently and unseen."
+    }),
+    plot.PlotStageDetails(characters=mage, instruction_blocks={
+        plot_instructions:
+            "I am a mage, come to end the tyrant. His gate is guarded, so I will not approach it as a "
+            "human -- I will shapeshift into an animal to bypass the guards."
+    }),
+]
+</syntaxhighlight>
+
+=== Character specific overrides ===
+
+The next plot stage is about moving through the outer parts of the tyrant's keep. For this, we want the warrior and the thief to have the same experience, but we want a special experience available to just the mage. Instead of needing to repeat the same instructions for multiple characters, we can set up some default instructions using <code>plot_details</code>, as well as character specific details for just the mage.
+
+If a character has any character-specific plot stage details, then those will take priority over the standard ones.
+
+<syntaxhighlight lang="python">
+OUTER_KEEP = plot.PlotStage(description="The outer keep")
+TO_OUTER_KEEP = plot.PlotTransition(
+    starting_stage=ENTRY, ending_stage=OUTER_KEEP,
+    trigger_on_scenario="I get inside the keep",
+)
+OUTER_KEEP.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I am moving through the outer halls of the keep -- guardrooms, cold storerooms, a chapel gone to "
+        "dust. The way to the throne room lies somewhere ahead."
+})
+OUTER_KEEP.character_specific_plot_details = [
+    plot.PlotStageDetails(characters=mage, instruction_blocks={
+        plot_instructions:
+            "I am moving through the outer halls of the keep, and where another would see only dust and "
+            "stone, I see it: a seam of arcane light buried in one wall, a concealment ward hiding a "
+            "passage. Something is being kept out of sight back there."
+    }),
+]
+</syntaxhighlight>
+
+=== Character-exclusive plot stages ===
+
+We have two methods of defeating the tyrant. The first is a showdown in the throne room, which any character can do. The second is mage-exclusive - by finding the power source of the tyrant, the mage can destroy it and defeat the tyrant without need for a confrontation.
+
+Although a plot stage cannot inherently be restricted to a specific character, we can restrict the transitions into a plot stage to a character. In this case, we restrict the transition into the POWER_SOURCE plot stage to the mage only. This will produce a warning down the line, but we can ignore that warning.
+
+<syntaxhighlight lang="python">
+THRONE_ROOM = plot.PlotStage(description="The throne room")
+TO_THRONE_ROOM = plot.PlotTransition(
+    starting_stage=OUTER_KEEP, ending_stage=THRONE_ROOM,
+    trigger_on_scenario="I press on toward the throne room",
+)
+THRONE_ROOM.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I am in the tyrant's throne room, and the tyrant himself is before me on his black throne. There "
+        "is no more keep to cross and no one left between us. It ends here."
+})
+
+POWER_SOURCE = plot.PlotStage(description="The tyrant's power source")
+TO_POWER_SOURCE = plot.PlotTransition(
+    starting_stage=OUTER_KEEP, ending_stage=POWER_SOURCE,
+    trigger_on_scenario="I follow the magical trail and slip into the hidden passage",
+    characters=mage, # This can be a single character or a list of characters
+    transition_event=(
+        "Following the traces of magic, I pass through the hidden passage and into a secret chamber. "
+        "In the center of this chamber is a corrupted well of foul water that the tyrant draws his power from."
+    ),
+)
+POWER_SOURCE.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "I have found the source of the tyrant's power - a corrupted well of foul water in a hidden chamber. "
+        "If I cleanse the well, I can defeat the tyrant without need for a confrontation."
+})
+</syntaxhighlight>
+
+=== Finishing off the plotline ===
+
+With both of the plot branches resolved, we can create a victory plot stage.
+
+<syntaxhighlight lang="python">
+VICTORY = plot.PlotStage(description="Victory")
+DEFEAT_TYRANT = plot.PlotTransition(
+    starting_stage=THRONE_ROOM, ending_stage=VICTORY,
+    trigger_on_scenario="I defeat the tyrant",
+    end_game=True, can_continue=True,
+    transition_event="The tyrant falls at last, and from the cells far below a cheer goes up. It is over.",
+)
+DESTROY_POWER_SOURCE = plot.PlotTransition(
+    starting_stage=POWER_SOURCE, ending_stage=VICTORY,
+    trigger_on_scenario="I cleanse the well",
+    end_game=True, can_continue=True,
+    transition_event=(
+        "I cleanse the well and its waters run clear. Far off in the throne room the tyrant "
+        "crumples as his stolen power leaves him. I celebrate, having been victorious without a fight."
+    ),
+)
+VICTORY.plot_details = plot.PlotStageDetails(instruction_blocks={
+    plot_instructions:
+        "The tyrant is dead and his keep is ours. The gates stand open, the prisoners are free, and "
+        "daylight is in these halls for the first time in years."
+})
+</syntaxhighlight>
+
+=== Warnings ===
+
+As we add the plot, you will see some warnings here about how there is a plot stage not reachable by two characters. This is fine for this example, but it may be useful for more complex worlds to ensure that everything is reachable.
+
+<syntaxhighlight lang="python">
+plot.add_plot(
+    world,
+    [ENTRY, OUTER_KEEP, THRONE_ROOM, POWER_SOURCE, VICTORY],
+    [TO_OUTER_KEEP, TO_THRONE_ROOM, TO_POWER_SOURCE, DEFEAT_TYRANT, DESTROY_POWER_SOURCE],
+)
+</syntaxhighlight>
+
+=== Output ===
+
+<syntaxhighlight lang="python">
+print(world.summary())
+pathlib.Path("tutorial_plot_4_characters.json").write_text(world.to_json())
+</syntaxhighlight>
+
+== Plot tutorial 5 — Many plots at once ==
+
+So far, every world we have built has had a single plotline, and as the player advances through that plot, they have a single axis of progression. However, it is common for the world designer to want multiple axes of progression, or multiple simultaneous plotlines. In this world, we will show how it can be done.
+
+In this example, we build a fantasy world where the hero practices martial arts that can manipulate the elements. The protagonist can train in four base elements -- fire, water, earth and air -- and use their expertise in this to unlock advanced hybrid elements and eventually become the master of elements.
+
+We will model the player's progress in each of the martial arts as its own separate plotline - a player will be able to advance along the fire plotline and the water plotline independently, with progress in each tracked separately.
+
+<syntaxhighlight lang="python">
+import pathlib
+
+import iw
+from iw import plot
+
+world = iw.World(title="The Four Disciplines")
+world.instructions = """
+This is an adventure set in a fantasy world dominated by martial arts. Martial arts can be used to control the four classical elements - Fire, Water, Air and Earth.
+
+There are also advanced hybrid elements that can be mastered by becoming proficient with multiple elements.
+
+I am on a journey to master all four elements, and become Master of Elements.
+"""
+</syntaxhighlight>
+
+=== The four basic elements ===
+
+Each of the basic elements will have the following:
+* A tracked item that tracks the player's skill with that element, ranging from 0 to 100
+* An instruction block that tells the AI what the user's skill with that element is
+* A plotline that updates this instruction block as the user gains skill
+
+The skill tracked item auto-increments as the player uses that element. The plotline's transitions then fire when the skill crosses a threshold -- 25 for apprentice, then 50, 75 and 100 -- so the plot rank keeps pace with the skill automatically. Because the transition fires on a tracked-item value rather than the player saying something, it carries an <code>additional_conditions</code> gate instead of a <code>trigger_on_scenario</code>.
+
+<syntaxhighlight lang="python">
+# ─── Fire ────────────────────────────────────────────────────────────────────────────────────────
+FIRE_SKILL = iw.TrackedItem(
+    name="Fire Skill",
+    dataType=iw.TrackedItemDataType.NUMBER,
+    visibility=iw.TrackedItemVisibility.EVERYONE,
+    initialValue="0",
+    updateInstructions="Whenever I use a fire skill, increase this by 1, to a maximum of 100.",
+    autoUpdate=True,
+)
+world.trackedItems.append(FIRE_SKILL)
+
+FIRE_INSTRUCTIONS = iw.InstructionBlock(name="Fire")
+world.instructionBlocks.append(FIRE_INSTRUCTIONS)
+
+FIRE_NOVICE = plot.PlotStage()
+FIRE_NOVICE.plot_details = plot.PlotStageDetails(instruction_blocks={FIRE_INSTRUCTIONS: "I am a novice of fire, able to conjure little more than sparks and smoke."})
+
+FIRE_APPRENTICE = plot.PlotStage()
+FIRE_TO_APPRENTICE = plot.PlotTransition(starting_stage=FIRE_NOVICE, ending_stage=FIRE_APPRENTICE, additional_conditions=[iw.tools.tracked_item_is(FIRE_SKILL, "25", iw.Inequality.AT_LEAST)])
+FIRE_APPRENTICE.plot_details = plot.PlotStageDetails(instruction_blocks={FIRE_INSTRUCTIONS: "I am an apprentice of fire, able to kindle and hold a steady flame at will."})
+
+FIRE_ADEPT = plot.PlotStage()
+FIRE_TO_ADEPT = plot.PlotTransition(starting_stage=FIRE_APPRENTICE, ending_stage=FIRE_ADEPT, additional_conditions=[iw.tools.tracked_item_is(FIRE_SKILL, "50", iw.Inequality.AT_LEAST)])
+FIRE_ADEPT.plot_details = plot.PlotStageDetails(instruction_blocks={FIRE_INSTRUCTIONS: "I am an adept of fire, hurling fireballs and stepping unburned through flame."})
+
+FIRE_EXPERT = plot.PlotStage()
+FIRE_TO_EXPERT = plot.PlotTransition(starting_stage=FIRE_ADEPT, ending_stage=FIRE_EXPERT, additional_conditions=[iw.tools.tracked_item_is(FIRE_SKILL, "75", iw.Inequality.AT_LEAST)])
+FIRE_EXPERT.plot_details = plot.PlotStageDetails(instruction_blocks={FIRE_INSTRUCTIONS: "I am an expert of fire, calling up roaring walls of flame at a gesture."})
+
+FIRE_MASTER = plot.PlotStage()
+FIRE_TO_MASTER = plot.PlotTransition(starting_stage=FIRE_EXPERT, ending_stage=FIRE_MASTER, additional_conditions=[iw.tools.tracked_item_is(FIRE_SKILL, "100", iw.Inequality.AT_LEAST)])
+FIRE_MASTER.plot_details = plot.PlotStageDetails(instruction_blocks={FIRE_INSTRUCTIONS: "I am a master of fire, able to summon infernos and forge weapons of pure heat."})
+
+FIRE_PLOTLINE = plot.Plotline("Fire",
+    [FIRE_NOVICE, FIRE_APPRENTICE, FIRE_ADEPT, FIRE_EXPERT, FIRE_MASTER],
+    [FIRE_TO_APPRENTICE, FIRE_TO_ADEPT, FIRE_TO_EXPERT, FIRE_TO_MASTER],
+)
+
+# ─── Water ───────────────────────────────────────────────────────────────────────────────────────
+WATER_SKILL = iw.TrackedItem(
+    name="Water Skill",
+    dataType=iw.TrackedItemDataType.NUMBER,
+    visibility=iw.TrackedItemVisibility.EVERYONE,
+    initialValue="0",
+    updateInstructions="Whenever I use a water skill, increase this by 1, to a maximum of 100.",
+    autoUpdate=True,
+)
+world.trackedItems.append(WATER_SKILL)
+
+WATER_INSTRUCTIONS = iw.InstructionBlock(name="Water")
+world.instructionBlocks.append(WATER_INSTRUCTIONS)
+
+WATER_NOVICE = plot.PlotStage()
+WATER_NOVICE.plot_details = plot.PlotStageDetails(instruction_blocks={WATER_INSTRUCTIONS: "I am a novice of water, able to do little more than ripple a still pool."})
+
+WATER_APPRENTICE = plot.PlotStage()
+WATER_TO_APPRENTICE = plot.PlotTransition(starting_stage=WATER_NOVICE, ending_stage=WATER_APPRENTICE, additional_conditions=[iw.tools.tracked_item_is(WATER_SKILL, "25", iw.Inequality.AT_LEAST)])
+WATER_APPRENTICE.plot_details = plot.PlotStageDetails(instruction_blocks={WATER_INSTRUCTIONS: "I am an apprentice of water, drawing clean water from the very air."})
+
+WATER_ADEPT = plot.PlotStage()
+WATER_TO_ADEPT = plot.PlotTransition(starting_stage=WATER_APPRENTICE, ending_stage=WATER_ADEPT, additional_conditions=[iw.tools.tracked_item_is(WATER_SKILL, "50", iw.Inequality.AT_LEAST)])
+WATER_ADEPT.plot_details = plot.PlotStageDetails(instruction_blocks={WATER_INSTRUCTIONS: "I am an adept of water, shaping currents and turning aside the falling rain."})
+
+WATER_EXPERT = plot.PlotStage()
+WATER_TO_EXPERT = plot.PlotTransition(starting_stage=WATER_ADEPT, ending_stage=WATER_EXPERT, additional_conditions=[iw.tools.tracked_item_is(WATER_SKILL, "75", iw.Inequality.AT_LEAST)])
+WATER_EXPERT.plot_details = plot.PlotStageDetails(instruction_blocks={WATER_INSTRUCTIONS: "I am an expert of water, commanding crashing waves and freezing what I touch."})
+
+WATER_MASTER = plot.PlotStage()
+WATER_TO_MASTER = plot.PlotTransition(starting_stage=WATER_EXPERT, ending_stage=WATER_MASTER, additional_conditions=[iw.tools.tracked_item_is(WATER_SKILL, "100", iw.Inequality.AT_LEAST)])
+WATER_MASTER.plot_details = plot.PlotStageDetails(instruction_blocks={WATER_INSTRUCTIONS: "I am a master of water, able to part rivers and calm the wildest sea."})
+
+WATER_PLOTLINE = plot.Plotline("Water",
+    [WATER_NOVICE, WATER_APPRENTICE, WATER_ADEPT, WATER_EXPERT, WATER_MASTER],
+    [WATER_TO_APPRENTICE, WATER_TO_ADEPT, WATER_TO_EXPERT, WATER_TO_MASTER],
+)
+
+# ─── Earth ───────────────────────────────────────────────────────────────────────────────────────
+EARTH_SKILL = iw.TrackedItem(
+    name="Earth Skill",
+    dataType=iw.TrackedItemDataType.NUMBER,
+    visibility=iw.TrackedItemVisibility.EVERYONE,
+    initialValue="0",
+    updateInstructions="Whenever I use an earth skill, increase this by 1, to a maximum of 100.",
+    autoUpdate=True,
+)
+world.trackedItems.append(EARTH_SKILL)
+
+EARTH_INSTRUCTIONS = iw.InstructionBlock(name="Earth")
+world.instructionBlocks.append(EARTH_INSTRUCTIONS)
+
+EARTH_NOVICE = plot.PlotStage()
+EARTH_NOVICE.plot_details = plot.PlotStageDetails(instruction_blocks={EARTH_INSTRUCTIONS: "I am a novice of earth, able only to shift a small handful of pebbles."})
+
+EARTH_APPRENTICE = plot.PlotStage()
+EARTH_TO_APPRENTICE = plot.PlotTransition(starting_stage=EARTH_NOVICE, ending_stage=EARTH_APPRENTICE, additional_conditions=[iw.tools.tracked_item_is(EARTH_SKILL, "25", iw.Inequality.AT_LEAST)])
+EARTH_APPRENTICE.plot_details = plot.PlotStageDetails(instruction_blocks={EARTH_INSTRUCTIONS: "I am an apprentice of earth, raising low mounds of soil and loose stone."})
+
+EARTH_ADEPT = plot.PlotStage()
+EARTH_TO_ADEPT = plot.PlotTransition(starting_stage=EARTH_APPRENTICE, ending_stage=EARTH_ADEPT, additional_conditions=[iw.tools.tracked_item_is(EARTH_SKILL, "50", iw.Inequality.AT_LEAST)])
+EARTH_ADEPT.plot_details = plot.PlotStageDetails(instruction_blocks={EARTH_INSTRUCTIONS: "I am an adept of earth, hurling boulders and standing utterly unshaken."})
+
+EARTH_EXPERT = plot.PlotStage()
+EARTH_TO_EXPERT = plot.PlotTransition(starting_stage=EARTH_ADEPT, ending_stage=EARTH_EXPERT, additional_conditions=[iw.tools.tracked_item_is(EARTH_SKILL, "75", iw.Inequality.AT_LEAST)])
+EARTH_EXPERT.plot_details = plot.PlotStageDetails(instruction_blocks={EARTH_INSTRUCTIONS: "I am an expert of earth, raising walls of solid rock from bare ground."})
+
+EARTH_MASTER = plot.PlotStage()
+EARTH_TO_MASTER = plot.PlotTransition(starting_stage=EARTH_EXPERT, ending_stage=EARTH_MASTER, additional_conditions=[iw.tools.tracked_item_is(EARTH_SKILL, "100", iw.Inequality.AT_LEAST)])
+EARTH_MASTER.plot_details = plot.PlotStageDetails(instruction_blocks={EARTH_INSTRUCTIONS: "I am a master of earth, able to reshape hills and split the ground asunder."})
+
+EARTH_PLOTLINE = plot.Plotline("Earth",
+    [EARTH_NOVICE, EARTH_APPRENTICE, EARTH_ADEPT, EARTH_EXPERT, EARTH_MASTER],
+    [EARTH_TO_APPRENTICE, EARTH_TO_ADEPT, EARTH_TO_EXPERT, EARTH_TO_MASTER],
+)
+
+# ─── Air ─────────────────────────────────────────────────────────────────────────────────────────
+AIR_SKILL = iw.TrackedItem(
+    name="Air Skill",
+    dataType=iw.TrackedItemDataType.NUMBER,
+    visibility=iw.TrackedItemVisibility.EVERYONE,
+    initialValue="0",
+    updateInstructions="Whenever I use an air skill, increase this by 1, to a maximum of 100.",
+    autoUpdate=True,
+)
+world.trackedItems.append(AIR_SKILL)
+
+AIR_INSTRUCTIONS = iw.InstructionBlock(name="Air")
+world.instructionBlocks.append(AIR_INSTRUCTIONS)
+
+AIR_NOVICE = plot.PlotStage()
+AIR_NOVICE.plot_details = plot.PlotStageDetails(instruction_blocks={AIR_INSTRUCTIONS: "I am a novice of air, able to stir no more than a faint breeze."})
+
+AIR_APPRENTICE = plot.PlotStage()
+AIR_TO_APPRENTICE = plot.PlotTransition(starting_stage=AIR_NOVICE, ending_stage=AIR_APPRENTICE, additional_conditions=[iw.tools.tracked_item_is(AIR_SKILL, "25", iw.Inequality.AT_LEAST)])
+AIR_APPRENTICE.plot_details = plot.PlotStageDetails(instruction_blocks={AIR_INSTRUCTIONS: "I am an apprentice of air, riding gusts to soften every fall."})
+
+AIR_ADEPT = plot.PlotStage()
+AIR_TO_ADEPT = plot.PlotTransition(starting_stage=AIR_APPRENTICE, ending_stage=AIR_ADEPT, additional_conditions=[iw.tools.tracked_item_is(AIR_SKILL, "50", iw.Inequality.AT_LEAST)])
+AIR_ADEPT.plot_details = plot.PlotStageDetails(instruction_blocks={AIR_INSTRUCTIONS: "I am an adept of air, gliding on the wind and batting arrows aside with gales."})
+
+AIR_EXPERT = plot.PlotStage()
+AIR_TO_EXPERT = plot.PlotTransition(starting_stage=AIR_ADEPT, ending_stage=AIR_EXPERT, additional_conditions=[iw.tools.tracked_item_is(AIR_SKILL, "75", iw.Inequality.AT_LEAST)])
+AIR_EXPERT.plot_details = plot.PlotStageDetails(instruction_blocks={AIR_INSTRUCTIONS: "I am an expert of air, conjuring whirlwinds and snatching the breath from foes."})
+
+AIR_MASTER = plot.PlotStage()
+AIR_TO_MASTER = plot.PlotTransition(starting_stage=AIR_EXPERT, ending_stage=AIR_MASTER, additional_conditions=[iw.tools.tracked_item_is(AIR_SKILL, "100", iw.Inequality.AT_LEAST)])
+AIR_MASTER.plot_details = plot.PlotStageDetails(instruction_blocks={AIR_INSTRUCTIONS: "I am a master of air, able to ride the open sky and call down howling cyclones."})
+
+AIR_PLOTLINE = plot.Plotline("Air",
+    [AIR_NOVICE, AIR_APPRENTICE, AIR_ADEPT, AIR_EXPERT, AIR_MASTER],
+    [AIR_TO_APPRENTICE, AIR_TO_ADEPT, AIR_TO_EXPERT, AIR_TO_MASTER],
+)
+</syntaxhighlight>
+
+=== Hybrid arts -- gating one plotline on the others ===
+
+The hybrid arts allow us to have progression in one plotline depend on progression in another. For example, in order to unlock steam manipulation, the player must be at least adept level in both fire and water. This is done with <code>requires=</code>, which lists the stages of other plotlines that must be current for the transition to fire.
+
+Stages from the same plotline are OR'd together, and different plotlines are AND'd. So <code>requires=[FIRE_ADEPT, FIRE_EXPERT, FIRE_MASTER, WATER_ADEPT, WATER_EXPERT, WATER_MASTER]</code> reads as "(fire is adept, expert or master) AND (water is adept, expert or master)".
+
+<syntaxhighlight lang="python">
+# ─── Steam (Fire + Water) ────────────────────────────────────────────────────────────────────────
+STEAM_INSTRUCTIONS = iw.InstructionBlock(name="Steam")
+world.instructionBlocks.append(STEAM_INSTRUCTIONS)
+
+STEAM_LOCKED = plot.PlotStage()
+STEAM_LOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={STEAM_INSTRUCTIONS: "The art of steam still eludes me; fire and water will not yet answer as one."})
+
+STEAM_UNLOCKED = plot.PlotStage()
+UNLOCK_STEAM = plot.PlotTransition(
+    starting_stage=STEAM_LOCKED, ending_stage=STEAM_UNLOCKED,
+    requires=[FIRE_ADEPT, FIRE_EXPERT, FIRE_MASTER, WATER_ADEPT, WATER_EXPERT, WATER_MASTER],
+    show_message="You have unlocked the Steam technique!",
+)
+STEAM_UNLOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={STEAM_INSTRUCTIONS: "I wield steam, scalding clouds that blind and burn at once."})
+
+STEAM_PLOTLINE = plot.Plotline("Steam", [STEAM_LOCKED, STEAM_UNLOCKED], [UNLOCK_STEAM])
+
+# ─── Magma (Fire + Earth) ────────────────────────────────────────────────────────────────────────
+MAGMA_INSTRUCTIONS = iw.InstructionBlock(name="Magma")
+world.instructionBlocks.append(MAGMA_INSTRUCTIONS)
+
+MAGMA_LOCKED = plot.PlotStage()
+MAGMA_LOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={MAGMA_INSTRUCTIONS: "The art of magma is beyond me; stone and flame remain stubbornly apart."})
+
+MAGMA_UNLOCKED = plot.PlotStage()
+UNLOCK_MAGMA = plot.PlotTransition(
+    starting_stage=MAGMA_LOCKED, ending_stage=MAGMA_UNLOCKED,
+    requires=[FIRE_ADEPT, FIRE_EXPERT, FIRE_MASTER, EARTH_ADEPT, EARTH_EXPERT, EARTH_MASTER],
+    show_message="You have unlocked the Magma technique!",
+)
+MAGMA_UNLOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={MAGMA_INSTRUCTIONS: "I wield magma, molten rock that flows wherever I will it."})
+
+MAGMA_PLOTLINE = plot.Plotline("Magma", [MAGMA_LOCKED, MAGMA_UNLOCKED], [UNLOCK_MAGMA])
+
+# ─── Lightning (Fire + Air) ──────────────────────────────────────────────────────────────────────
+LIGHTNING_INSTRUCTIONS = iw.InstructionBlock(name="Lightning")
+world.instructionBlocks.append(LIGHTNING_INSTRUCTIONS)
+
+LIGHTNING_LOCKED = plot.PlotStage()
+LIGHTNING_LOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={LIGHTNING_INSTRUCTIONS: "The art of lightning is beyond me; heat and wind refuse to spark."})
+
+LIGHTNING_UNLOCKED = plot.PlotStage()
+UNLOCK_LIGHTNING = plot.PlotTransition(
+    starting_stage=LIGHTNING_LOCKED, ending_stage=LIGHTNING_UNLOCKED,
+    requires=[FIRE_ADEPT, FIRE_EXPERT, FIRE_MASTER, AIR_ADEPT, AIR_EXPERT, AIR_MASTER],
+    show_message="You have unlocked the Lightning technique!",
+)
+LIGHTNING_UNLOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={LIGHTNING_INSTRUCTIONS: "I wield lightning, splitting the sky with crackling bolts."})
+
+LIGHTNING_PLOTLINE = plot.Plotline("Lightning", [LIGHTNING_LOCKED, LIGHTNING_UNLOCKED], [UNLOCK_LIGHTNING])
+
+# ─── Mud (Water + Earth) ─────────────────────────────────────────────────────────────────────────
+MUD_INSTRUCTIONS = iw.InstructionBlock(name="Mud")
+world.instructionBlocks.append(MUD_INSTRUCTIONS)
+
+MUD_LOCKED = plot.PlotStage()
+MUD_LOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={MUD_INSTRUCTIONS: "The art of mud escapes me; water and earth will not yet bind."})
+
+MUD_UNLOCKED = plot.PlotStage()
+UNLOCK_MUD = plot.PlotTransition(
+    starting_stage=MUD_LOCKED, ending_stage=MUD_UNLOCKED,
+    requires=[WATER_ADEPT, WATER_EXPERT, WATER_MASTER, EARTH_ADEPT, EARTH_EXPERT, EARTH_MASTER],
+    show_message="You have unlocked the Mud technique!",
+)
+MUD_UNLOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={MUD_INSTRUCTIONS: "I wield mud, dragging mires that swallow my foes whole."})
+
+MUD_PLOTLINE = plot.Plotline("Mud", [MUD_LOCKED, MUD_UNLOCKED], [UNLOCK_MUD])
+
+# ─── Storm (Water + Air) ─────────────────────────────────────────────────────────────────────────
+STORM_INSTRUCTIONS = iw.InstructionBlock(name="Storm")
+world.instructionBlocks.append(STORM_INSTRUCTIONS)
+
+STORM_LOCKED = plot.PlotStage()
+STORM_LOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={STORM_INSTRUCTIONS: "The art of the storm is beyond me; rain and wind will not yet rage together."})
+
+STORM_UNLOCKED = plot.PlotStage()
+UNLOCK_STORM = plot.PlotTransition(
+    starting_stage=STORM_LOCKED, ending_stage=STORM_UNLOCKED,
+    requires=[WATER_ADEPT, WATER_EXPERT, WATER_MASTER, AIR_ADEPT, AIR_EXPERT, AIR_MASTER],
+    show_message="You have unlocked the Storm technique!",
+)
+STORM_UNLOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={STORM_INSTRUCTIONS: "I wield the storm, lashing rain and wind into a single tempest."})
+
+STORM_PLOTLINE = plot.Plotline("Storm", [STORM_LOCKED, STORM_UNLOCKED], [UNLOCK_STORM])
+
+# ─── Sand (Earth + Air) ──────────────────────────────────────────────────────────────────────────
+SAND_INSTRUCTIONS = iw.InstructionBlock(name="Sand")
+world.instructionBlocks.append(SAND_INSTRUCTIONS)
+
+SAND_LOCKED = plot.PlotStage()
+SAND_LOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={SAND_INSTRUCTIONS: "The art of sand eludes me; earth and air will not yet scatter as one."})
+
+SAND_UNLOCKED = plot.PlotStage()
+UNLOCK_SAND = plot.PlotTransition(
+    starting_stage=SAND_LOCKED, ending_stage=SAND_UNLOCKED,
+    requires=[EARTH_ADEPT, EARTH_EXPERT, EARTH_MASTER, AIR_ADEPT, AIR_EXPERT, AIR_MASTER],
+    show_message="You have unlocked the Sand technique!",
+)
+SAND_UNLOCKED.plot_details = plot.PlotStageDetails(instruction_blocks={SAND_INSTRUCTIONS: "I wield sand, stinging stormfronts that scour and blind."})
+
+SAND_PLOTLINE = plot.Plotline("Sand", [SAND_LOCKED, SAND_UNLOCKED], [UNLOCK_SAND])
+</syntaxhighlight>
+
+=== The victory condition ===
+
+Our overall victory condition is reaching master status in all four base elements. We can track this by introducing another plotline to track the player's overall status as master of elements or not. It only has a single transition, which also ends the game.
+
+<syntaxhighlight lang="python">
+MASTER_OF_ELEMENTS_INSTRUCTIONS = iw.InstructionBlock(name="Master of Elements")
+world.instructionBlocks.append(MASTER_OF_ELEMENTS_INSTRUCTIONS)
+
+NOT_MASTER_OF_ELEMENTS = plot.PlotStage()
+NOT_MASTER_OF_ELEMENTS.plot_details = plot.PlotStageDetails(instruction_blocks={MASTER_OF_ELEMENTS_INSTRUCTIONS: "I am skilled, but I have not yet mastered all four disciplines."})
+
+MASTER_OF_ELEMENTS = plot.PlotStage()
+BECOME_GRANDMASTER = plot.PlotTransition(
+    starting_stage=NOT_MASTER_OF_ELEMENTS, ending_stage=MASTER_OF_ELEMENTS,
+    requires=[FIRE_MASTER, WATER_MASTER, EARTH_MASTER, AIR_MASTER],  # each base art exactly at master
+    end_game=True,
+    can_continue=True,
+    show_message="You have become a grandmaster of all four elements. You win!",
+)
+MASTER_OF_ELEMENTS.plot_details = plot.PlotStageDetails(instruction_blocks={MASTER_OF_ELEMENTS_INSTRUCTIONS: "I am a grandmaster of all four elements; my mastery is complete."})
+
+VICTORY_PLOTLINE = plot.Plotline("Victory", [NOT_MASTER_OF_ELEMENTS, MASTER_OF_ELEMENTS], [BECOME_GRANDMASTER])
+</syntaxhighlight>
+
+=== Building the plot ===
+
+<code>add_plots</code> (plural) takes the whole set of plotlines at once -- it has to, because they gate on each other, and it cannot check that a <code>requires</code> gate is satisfiable without seeing every plotline it refers to. Before it emits anything, it also proves that every stage of all eleven plotlines is reachable. Because the plotlines are coupled by <code>requires</code>, that is a search over combinations of states, not a walk of one graph.
+
+<syntaxhighlight lang="python">
+plot.add_plots(world, [
+    FIRE_PLOTLINE, WATER_PLOTLINE, EARTH_PLOTLINE, AIR_PLOTLINE,
+    STEAM_PLOTLINE, MAGMA_PLOTLINE, LIGHTNING_PLOTLINE, MUD_PLOTLINE, STORM_PLOTLINE, SAND_PLOTLINE,
+    VICTORY_PLOTLINE,
+])
+</syntaxhighlight>
+
+=== Output ===
+
+<syntaxhighlight lang="python">
+print(world.summary())
+pathlib.Path("tutorial_plot_5_multiple_plotlines.json").write_text(world.to_json())
+</syntaxhighlight>

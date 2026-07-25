@@ -1,0 +1,354 @@
+# Tutorial 2 — advanced: why not just use the editor
+
+This is the second of three tutorials, and it assumes [tutorial 1](tutorial-1-iw.md).
+
+Infinite Worlds ships a perfectly good editor. It has a box for every field in the world format, it validates as you type, and it does not ask you to know what a dataclass is. **For a small world it is better than this library**, and you should use it.
+
+These four worlds are the other case. First the **tools**: `iw.tools`, the two helpers that read and write a tracked item without ever typing its id twice. **Generate**: a spreadsheet of shipwrecks becomes a lore book, and a spreadsheet of sanity bands becomes the triggers the basic track wrote by hand. **Structure**: as the world grows, give the rows a dataclass and split each subsystem into its own file. And finally, **combining everything**: nothing new, just every idea so far combined into one complete world.
+
+The question underneath every one of them is the same: *what happens when there are four hundred of them?*
+
+| | notebook | the idea |
+|---|---|---|
+| 1 | `tutorial_advanced_1_helpers` | The helper functions |
+| 2 | `tutorial_advanced_2_generating_from_data` | Generating objects from external data |
+| 3 | `tutorial_advanced_3_classes_and_files` | Classes and files |
+| 4 | `tutorial_advanced_4_combining_everything` | Combining everything: Bones in the Ocean, complete |
+
+## Advanced tutorial 1 — The helper functions
+
+In the basic tutorial, we saw how we can build trigger objects, but we also saw that it was fairly clunky
+to do - we needed a lot of boilerplate, and we needed to repeat ourselves to make sure everything was
+set up properly. Maintaining a lot of triggers like that can be difficult, and so we have some helper functions
+that make things easier.
+
+First, let's set up a basic version of the world.
+
+```python
+import pathlib
+import iw
+
+world = iw.World(title="Bones in the Ocean")
+
+SANITY = iw.TrackedItem(
+    name="Sanity",
+    dataType=iw.TrackedItemDataType.NUMBER,
+    visibility=iw.TrackedItemVisibility.AI_ONLY,
+    initialValue="100",
+)
+world.trackedItems.append(SANITY)
+```
+
+### Reading a tracked item
+
+Let us suppose that we want a trigger that happens when the sanity is below 25. The full way of writing that out is:
+
+```python
+old = iw.TriggerCondition(
+    type=iw.ConditionType.ON_TRACKED_ITEM,
+    category="condition",
+    trackedItemID=SANITY.id,
+    inequality=iw.Inequality.AT_MOST,
+    data={
+        "inequality": iw.Inequality.AT_MOST,
+        "requiredValue": "24",
+        "trackedItemID": SANITY.id,
+        "textComparison": "contains",
+    },
+)
+```
+
+`SANITY.id` is in there twice, and `AT_MOST` twice, and if the two copies of the id ever disagree the
+trigger quietly stops firing. `iw.tools.tracked_item_is` is the same condition, built from the item
+itself so the id is written once, by the library:
+
+```python
+new = iw.tools.tracked_item_is(SANITY, "24", iw.Inequality.AT_MOST)
+
+# we can verify it really is the same condition:
+assert old.data == new.data and old.trackedItemID == new.trackedItemID
+```
+
+### Setting a tracked item
+
+Setting a tracked item involves a similar amount of clunkiness. For example, let us suppose we want to set the sanity
+to a specific value. The full way of writing this out would be:
+
+```python
+old = iw.TriggerEffect(
+    type=iw.EffectType.SET_TRACKED_ITEM_VALUE,
+    trackedItemID=SANITY.id,
+    data={
+        "action": iw.TrackedItemAction.SET,
+        "newValue": "100",
+        "replaceWith": "",
+        "trackedItemID": SANITY.id,
+    },
+)
+
+# We can similarly use the helper function iw.tools.set_tracked_item to come up with a cleaner example:
+
+new = iw.tools.set_tracked_item(SANITY, "100")
+```
+
+We can use these to create some triggers that clamp sanity to be between 0 and 100 while avoiding boilerplate
+
+```python
+CLAMP_MINIMUM = iw.TriggerEvent(
+    name="Clamp (minimum)",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is(SANITY, "0", iw.Inequality.AT_MOST)],
+    triggerEffects=[iw.tools.set_tracked_item(SANITY, "0")]
+)
+CLAMP_MAXIMUM = iw.TriggerEvent(
+    name="Clamp (maximum)",
+    canTriggerMoreThanOnce=True,
+    triggerConditions=[iw.tools.tracked_item_is(SANITY, "100", iw.Inequality.AT_LEAST)],
+    triggerEffects=[iw.tools.set_tracked_item(SANITY, "100")]
+)
+world.triggerEvents.extend([CLAMP_MINIMUM, CLAMP_MAXIMUM])
+```
+
+### Output
+
+```python
+print(world.summary())
+pathlib.Path("tutorial_advanced_1_helpers.json").write_text(world.to_json())
+```
+
+## Advanced tutorial 2 — Generating objects from external data
+
+In the basic tutorial, we had a few repeated blocks of logic - when we created a KIB for each shipwreck,
+we had to inline all of these in our code, and repeat the boilerplate logic to set up KIBs. Similarly,
+when we created our triggers to update sanity instructions, we created all ten triggers manually,
+requiring a lot of boilerplate logic that is difficult to maintain.
+
+The real strength of using this python editor over Infinite World's built-in editor is that we can generate
+this content dynamically from other sources. In our case, we have two csv files of data that we want to
+feed into this world - one that gives details of each of the shipwrecks, and one that gives details of the
+sanity instructions.
+
+You can see these csv files in the same folder as this notebook. They can be opened and edited without having
+to worry about maintaining any coding boilerplate, or without needing advanced coding skills.
+
+```python
+import csv
+import pathlib
+
+import iw
+
+world = iw.World(title="Bones in the Ocean")
+
+# Both CSVs sit in this folder. We find it by `__file__` when this runs as a script (build.py sets it), and
+# by the working directory when it runs as a notebook (a notebook has no `__file__`). One of the two is
+# always right: a bare `open("wrecks.csv")` would work in the browser but look in the wrong place under
+# build.py, which runs from `out/`.
+FOLDER = pathlib.Path(__file__).parent if "__file__" in globals() else pathlib.Path.cwd()
+```
+
+#### Building the wrecks
+
+Each shipwreck corresponds to one row in the CSV. We just need to write the logic to convert a single csv row
+into a KIB, and we can iterate through the file to generate all of them
+
+```python
+# csv.DictReader hands back one dict per row, keyed by the header line. We read the whole file once (so we
+# can walk the wrecks twice -- here for the KIBs, and below for the summary), then build one KIB per row.
+with (FOLDER / "wrecks.csv").open(newline="", encoding="utf-8") as handle:
+    wrecks = list(csv.DictReader(handle))
+
+for wreck in wrecks:
+    name, year = wreck["ship_name"], wreck["year"]
+    # Every word that should summon this wreck: her name, "the " + her name, and the year. Derived from the
+    # row, so it is the same few lines for twelve ships or twelve thousand, and never a typo on the fifteenth.
+    keywords = sorted({word.strip().lower() for word in (name, f"the {name}", year) if word.strip()})
+    article = "an" if wreck["type"][:1].lower() in "aeiou" else "a"
+    crew = "; ".join(part.strip() for part in wreck["notable_crew"].split(";") if part.strip())
+    world.loreBookEntries.append(iw.LoreBookEntry(
+        name=f"Wreck: {name} ({year})",
+        keywords=keywords,
+        content=(
+            f"The {name}, {article} {wreck['type']}, lost on the reef off Rona in {year}. "
+            f"{wreck['souls']} souls lost.\n"
+            f"Of note aboard: {crew}.\n"
+            f"{wreck['ship_story']}"
+        ),
+    ))
+```
+
+#### The wreck summary instructions
+
+The KIBs are given to the storyteller AI when the keywords are seen in the recent turns. However, if this is
+the only place the wrecks are known about, then the AI will never bring them up and the KIBs will never fire.
+We will therefore need to create an extra instruction block that always gets fed to the AI, giving the AI a
+brief overview of each of the wrecks, so it can factor those into the turns it generates.
+
+```python
+world.instructionBlocks.append(iw.InstructionBlock(
+    name="The wrecks",
+    content=(
+        "The reef north of the light has been taking ships for centuries. Mention them in passing when it fits -- "
+        "a name in the log, the graves under the cairn, a spar on the shore after a storm. The wrecks of note are:\n"
+        + "\n".join(f"- {wreck['ship_name']} ({wreck['year']}): {wreck['brief']}" for wreck in wrecks)
+    ),
+))
+```
+
+#### The sanity instructions
+
+In the basic tutorial, we introduced the SANITY tracked item, and how the instructions varied as sanity varied.
+However, we had to do it the long way - we had all the instructions inline, and we had to repeat the trigger
+definitions for each, as well as the boilerplate around trigger conditions and effects.
+
+Fortunately, we can similarly do this programmatically.
+
+```python
+SANITY = iw.TrackedItem(
+    name="Sanity",
+    dataType=iw.TrackedItemDataType.NUMBER,
+    visibility=iw.TrackedItemVisibility.AI_ONLY,
+    initialValue="100",
+    autoUpdate=True,
+)
+world.trackedItems.append(SANITY)
+
+# The block the band triggers rewrite: what the day and the night are like at the keeper's current sanity.
+DAY_AND_NIGHT = iw.InstructionBlock(name="The day and the night")
+world.instructionBlocks.append(DAY_AND_NIGHT)
+
+# One trigger per band: while the meter is inside [low, high], rewrite the block with that band's day and
+# night. canTriggerMoreThanOnce, or the band fires once and then freezes -- easy to forget on the tenth one.
+with (FOLDER / "sanity_bands.csv").open(newline="", encoding="utf-8") as handle:
+    for band in csv.DictReader(handle):
+        world.triggerEvents.append(iw.TriggerEvent(
+            name=f"Sanity {band['low']}-{band['high']}",
+            canTriggerMoreThanOnce=True,
+            triggerConditions=[
+                iw.tools.tracked_item_is(SANITY, band["low"], iw.Inequality.AT_LEAST),
+                iw.tools.tracked_item_is(SANITY, band["high"], iw.Inequality.AT_MOST),
+            ],
+            triggerEffects=[
+                iw.TriggerEffect(
+                    type=iw.EffectType.MODIFY_INSTRUCTION_BLOCK,
+                    data={"id": DAY_AND_NIGHT.id, "content": f"Day: {band['day']}\n\nNight: {band['night']}"},
+                ),
+            ],
+        ))
+```
+
+### Output
+
+```python
+print(world.summary())
+pathlib.Path("tutorial_advanced_2_generating_from_external_data.json").write_text(world.to_json())
+```
+
+## Advanced tutorial 3 — Classes and files
+
+Tutorial 2 showed how we could load external data and build it into the world definition, but it still involved
+a lot of code making the file a bit complex. If we were to work on a larger world, that could quickly
+expand to make the world difficult to maintain and build.
+
+Instead, as a world grows, it is optimal to implement it as a series of subsystems that you can install into
+a base world. In our case, we will create a subsystem for the shipwrecks, and a subsystem for the sanity
+bands.
+
+An important thing to note - in this example the ordering of which module is installed first does not matter,
+but in more complex worlds it may be important, if there are triggers that need to fire in a certain order.
+
+```python
+import pathlib
+import iw
+
+world = iw.World(title="Bones in the Ocean")
+```
+
+Both `wrecks` and `sanity_bands` are implemented as python modules in the same directory as this script, and can
+be locally imported. More complex projects may have a more complex file structure.
+
+If you want to see how these work, you can use the file browser on the left to examine these modules.
+
+```python
+import wrecks
+import sanity_bands
+
+# Each of these modules is equipped with an `install_into` method that will modify the world to include
+# the effects of that module.
+wrecks.install_into(world)          # a KIB per ship, and the roster that makes the AI name them
+sanity_bands.install_into(world)    # the sanity meter, the block it rewrites, and the ten band triggers
+```
+
+### Output
+
+```python
+print(world.summary())
+pathlib.Path("tutorial_advanced_3_classes_and_files.json").write_text(world.to_json())
+```
+
+## Advanced tutorial 4 — Combining everything: Bones in the Ocean, complete
+
+This tutorial doesn't cover anything new, it is just showing how we can combine everything we've seen before
+into a complete version of the world.
+
+| module | what it owns | where it comes from |
+|---|---|---|
+| `setting.py` | the premise: description, instructions, backstory, opening move | basic 1 |
+| `characters.py` | the two skills, the three playable characters, the boatman | basic 3 |
+| `tracked_items.py` | the Sanity meter and the day counter | basic 4 |
+| `wrecks.py` + `wrecks.csv` | a keyword block per ship, and the roster that names them | advanced 3 |
+| `sanity_bands.py` + `sanity_bands.csv` | the ten band triggers that rewrite the day and the night | advanced 3 |
+
+Each module exposes one function, `install_into(world)`, that adds its part to a world you pass in. Open
+the modules in the file browser to see how each works; this notebook only combines them.
+
+Four of the five modules are self-contained -- they touch the world and nothing else. The exception is
+`sanity_bands.py`. Its triggers have to point at the *same* Sanity meter that `tracked_items.py` defines,
+so rather than build a second meter it imports the one object (`from tracked_items import SANITY`) and
+wires its triggers to that. Because both modules share the one object, the order they install in does not
+matter -- the tracked-item id agrees either way.
+
+```python
+import pathlib
+
+import iw
+
+# Modules beside this one, imported by plain name. Never `from . import` -- this file is also a notebook,
+# and cells are top-level code with no package to be relative to.
+import setting
+import presentation
+import characters
+import tracked_items
+import wrecks
+import sanity_bands
+```
+
+### Assembly
+
+The notebook owns only the world's title. Everything else arrives from a module. Each `install_into` adds
+that subsystem's fields, tracked items, instruction blocks, keyword blocks, and triggers to the world.
+
+```python
+world = iw.World(title="Bones in the Ocean")
+
+setting.install_into(world)          # description, instructions, background, first input, objective
+presentation.install_into(world)     # the voice, the art direction, the cover art, the permissions
+characters.install_into(world)       # the two skills, the three keepers, the boatman
+tracked_items.install_into(world)    # the Sanity meter and the day counter
+wrecks.install_into(world)           # a KIB per ship, and the roster that names them
+sanity_bands.install_into(world)     # the ten band triggers, wired to tracked_items' SANITY
+```
+
+### Output
+
+```python
+print(world.summary())
+pathlib.Path("tutorial_advanced_4_combining_everything.json").write_text(world.to_json())
+```
+
+### Where to go next
+
+From here, you can do the following:
+- Try editing these scripts to generate a world more to your liking
+- Read the [tutorial for the plot engine](../worlds/tutorial_plot/README.md) to see how structured story development can be implemented
+- Have a look at the [fully fleshed out worlds](../worlds/starlit_frontiers/README.md) to see more complex worlds that can be created
+- Follow the [instructions to set this up on your own machine](../welcome.md#running-it-on-your-own-machine) and start developing your own worlds

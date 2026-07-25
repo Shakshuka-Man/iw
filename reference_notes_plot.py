@@ -1,0 +1,299 @@
+"""What the source cannot say about `iw.plot`: what each field is *for*.
+
+The companion to `reference_notes.py`, for the plot compiler. `reference.py` reads `plot.py` for
+structure and merges it with this to produce `docs/plot.md`. Same contract: a field with no note gets an
+empty cell, and a note for a field that no longer exists stops the build.
+
+`plot` defines no enums, so there is no enum table here -- the tail sections carry what would not fit in
+a cell instead.
+"""
+
+EXAMPLE_SETUP = ""
+ENUMS: dict = {}
+ENUM_NOTES: dict = {}
+
+TITLE = "`plot` — plotline authoring on top of `iw`"
+
+INTRO = """\
+`plot` is a higher-level layer over [`iw`](iw.md) for authoring interactive-fiction plots — one or more
+independent plotlines, with branching, character gating, and cross-plotline "synergy" — without
+hand-writing the underlying trigger machinery. You describe **stages** and **transitions**; `plot`
+compiles them into `iw` tracked items and trigger events.
+
+This page is every object in `plot`, every attribute on it, and what each one is for. The structure is
+read out of the dataclasses themselves, so it cannot fall behind the library.
+
+```python
+import iw
+import plot
+```
+
+**None of these objects are in the world format.** They are the description you write; `add_plot`
+compiles them down into the tracked items and trigger events of the `iw` layer, and it is that output the
+engine ever sees. So a `PlotStage` has no id and no JSON — it has an `internal_id`, which is bookkeeping
+for the compiler.
+
+## Concepts
+
+- **`PlotStage`** — a state the plot can be in. It holds no content itself; it points at the
+  `PlotStageDetails` that apply while it is active.
+- **`PlotStageDetails`** — one **layer** of stage content (`instruction_blocks`, `tracked_items`,
+  `additional_effects`), optionally scoped to specific `characters`. Re-applied every turn the stage is
+  active.
+- **`PlotTransition`** — an edge from one (or more) starting stage(s) to an ending stage, fired by a
+  player **scenario** and/or other conditions.
+- **`Plotline`** — a named bundle of stages + transitions that advances independently, with its own stage
+  tracker.
+- **`add_plot` / `add_plots`** — compile plotline(s) into a `World`.
+
+## How it compiles
+
+Each plotline gets, namespaced by its `name`:
+
+- a hidden **stage tracker** (`<name> Stage`) holding the id of the current stage;
+- a hidden per-turn **change gate** (`<name> Change`) so the plot advances at most once per turn;
+- a pool of hidden **situation slots** (`<name> Situation N`). The current stage's outgoing scenarios are
+  written into these slots, and transitions reference them via `<<…>>` — so the engine only ever
+  evaluates a small fixed number of situations per turn, not every scenario in the plot.
+
+Within a plotline the trigger evaluation order is load-bearing: reset gate → start / transitions → stage
+triggers.
+
+Each stage compiles to **one trigger per content layer**: the everyone-layer first, then one per
+character-specific layer, each carrying an `ON_CHARACTER` condition. Because the character layers are
+emitted *after* the everyone-layer, and a `MODIFY_INSTRUCTION_BLOCK` effect is a full overwrite, a
+character layer naming the same block or tracked item simply wins for its characters. That cascade is the
+whole point: write the shared content once, the per-character delta once.
+
+These extra triggers are cheap — they test tracked items and the chosen character, not LLM-evaluated
+situations, so they don't grow the situation-slot pool.\
+"""
+
+CLASS_NOTES = {
+    "PlotStage": """\
+**There is no `initial` flag.** The plotline starts at whichever stage has no transition into it, and
+exactly one stage must fit that description — being the start isn't something you declare, it's what the
+transitions say. Every character starts there.
+
+**Give your stages a `description`.** It costs nothing, and it is the difference between
+
+```
+Character 'Sir Garran' can never reach stage '3' of plotline 'Plot'.
+Character 'Sir Garran' can never reach stage '3' (the mage's secret passage) of plotline 'Plot'.
+```
+
+The reachability and content checks below identify a stage by its `internal_id`, which is a number the
+compiler picked. With thirty stages in a plotline, that number tells you nothing on its own.
+
+Both fields can be assigned after construction, so a plot file can be written in the order the story
+happens: **declare a stage, wire the transition that reaches it, then write the content you arrive at.**
+
+```python
+A = plot.PlotStage()
+A.plot_details = plot.PlotStageDetails(instruction_blocks={block: "the opening situation"})
+
+B = plot.PlotStage()
+A_TO_B = plot.PlotTransition(starting_stage=A, ending_stage=B, trigger_on_scenario="I do the thing")
+B.plot_details = plot.PlotStageDetails(instruction_blocks={block: "the next situation"})
+
+plot.add_plot(world, [A, B], [A_TO_B])
+```
+
+`A` is the initial stage — not because it says so, but because nothing transitions into it.\
+""",
+    "PlotStageDetails": """\
+```python
+GATES = plot.PlotStage(
+    # What both characters see...
+    plot_details=plot.PlotStageDetails(
+        instruction_blocks={block: "I stand before the keep's great sealed gates."},
+    ),
+    # ...and how each of them sees it. Overrides the block above, for that character only.
+    character_specific_plot_details=[
+        plot.PlotStageDetails(characters=warrior, instruction_blocks={block: "...They could be forced open by strength."}),
+        plot.PlotStageDetails(characters=mage,    instruction_blocks={block: "...I sense a faint magic woven through the stone."}),
+    ],
+)
+```
+
+A character may appear in **at most one** `character_specific_plot_details` entry per stage — two layers
+covering the same character would race to set the same blocks and items.
+
+Characters never gate a *stage*: every character starts at the same initial stage, and what they see there
+varies by layer. To gate the *path* a character can take, use `PlotTransition.characters`.\
+""",
+    "PlotTransition": """\
+`requires` lists `PlotStage`s belonging to **other** plotlines. Stages from the same plotline are **OR**'d
+(any one qualifies); different plotlines are **AND**'d (each must hold). Because plotlines are not assumed
+to be linear, you list every qualifying stage explicitly — there is deliberately **no** "this stage and
+everything after it" shorthand.
+
+```python
+# Unlock once Fire is adept-or-beyond AND Water is adept-or-beyond:
+requires=[FIRE_ADEPT, FIRE_EXPERT, FIRE_MASTER, WATER_ADEPT, WATER_EXPERT, WATER_MASTER]
+```\
+""",
+    "Plotline": """\
+The two tracker fields are filled in by the compiler. You name the plotline and list its stages and
+transitions; the trackers are what it compiles *to*.\
+""",
+}
+
+FIELDS = {
+    "PlotStage": {
+        "plot_details": "The content everyone sees at this stage. Must **not** name characters.",
+        "character_specific_plot_details": "Layers applied *on top of* `plot_details`, each scoped to its own characters.",
+        "internal_id": "An explicit id; otherwise the compiler assigns one.",
+        "description": "Never emitted — it only names the stage in warnings and errors. Write one anyway.",
+    },
+    "PlotStageDetails": {
+        "characters": "The character(s) this layer applies to; empty means everyone.",
+        "instruction_blocks": "`{InstructionBlock: text}` maintained while at the stage.",
+        "tracked_items": "`{TrackedItem: value}` maintained while at the stage.",
+        "additional_effects": "Raw `iw` effects applied every turn at the stage.",
+    },
+    "PlotTransition": {
+        "starting_stage": "The stage, or stages, this advances from.",
+        "ending_stage": "The stage it advances to.",
+        "transition_event": "One-off narration (`TELL_AI`) when it fires.",
+        "trigger_on_scenario": "The player situation that fires it, judged by the LLM.",
+        "show_message": "One-off message shown to the player when it fires.",
+        "end_game": "Ends the game on this transition.",
+        "can_continue": "Required, and only valid, when `end_game`. `False` is a hard ending.",
+        "requires": "Cross-plotline synergy gates — stages in *other* plotlines that must hold.",
+        "tracked_items": "`{TrackedItem: value}` set **once**, on the turn this fires.",
+        "additional_conditions": "Raw `iw` conditions ANDed onto the transition.",
+        "additional_effects": "Raw `iw` effects applied once, when it fires.",
+        "characters": "Restricts the transition to specific characters.",
+        "internal_id": "An explicit id; otherwise the compiler assigns one.",
+    },
+    "Plotline": {
+        "name": "Namespaces everything this plotline compiles to. Appears in warnings and errors.",
+        "plot_stages": "Every stage in the plotline.",
+        "plot_transitions": "Every edge between them.",
+        "plot_stage_tracker": "The hidden tracked item holding the current stage. Filled in by the compiler.",
+        "plot_change_tracker": "The hidden per-turn gate. Filled in by the compiler.",
+    },
+}
+
+FUNCTION_NOTES = {
+    "add_plots": """\
+Adds every plotline's tracked items and triggers to `world`, in place (it returns nothing). With
+`shared_gate=False` (the default) each plotline has its own per-turn gate, so plotlines advance
+independently and several may advance in the same turn; with `shared_gate=True` a single gate is shared,
+allowing at most one advance across all plotlines per turn.\
+""",
+    "add_plot": """\
+Single-plotline sugar: one plotline named `"Plot"`.
+
+The five tutorial worlds under `worlds/tutorial_plot/` walk these features in increasing order of
+complexity — [`worlds/tutorial_plot/README.md`](../worlds/tutorial_plot/README.md) is the guided tour.\
+""",
+}
+
+TAIL_SECTIONS = [
+    ("Stage vs. transition `tracked_items`", """\
+A `PlotStageDetails`' `instruction_blocks` / `tracked_items` / `additional_effects` are **re-applied every
+turn** the plot is at that stage, so their values must be idempotent ("maintained while here"). A
+transition's `tracked_items` are set **once**, on the turn it fires — the same `{TrackedItem: value}`
+shape, but a one-shot ("this happened"). Same for `additional_effects` / `show_message` /
+`transition_event`.
+
+Two things to keep in mind:
+
+- **Stage triggers run after transitions**, so if a transition and its `ending_stage` set the *same*
+  tracked item, the stage wins on the turn the transition fires — the one-shot value never lands.
+- It's a **`SET`**, not an `ADD` — `{gold: "100"}` means "gold becomes 100", not "+100". For an increment,
+  use `additional_effects` with a `TrackedItemAction.ADD` effect.\
+"""),
+    ("Validation (raises `ValueError`)", """\
+- exactly one initial stage per plotline — i.e. exactly one stage with no transition into it. Two means
+  two places to start; none means every stage is downstream of another and the plot can never begin;
+- a stage's `plot_details` must not name characters;
+- every `character_specific_plot_details` entry must name at least one character, and a character may
+  appear in at most one of them per stage;
+- `can_continue` set if and only if `end_game`;
+- every referenced character must exist in `world.possibleCharacters`;
+- `requires` must reference stages that exist in some plotline;
+- each stage / transition belongs to exactly one plotline;
+- a transition has at least one starting stage, and only references stages of its own plotline;
+- **no dead content** — see Reachability.\
+"""),
+    ("Reachability", """\
+`add_plot(s)` searches, for each playable character, every way that character could ever advance the plot,
+and refuses to build a world containing content they can never see.
+
+**Errors** (dead content — always a bug):
+
+| | |
+|---|---|
+| a stage **no character** can reach | you forgot to wire it up, or its only routes in are impossible |
+| a **transition that can never fire** for anyone | its starting stage is out of reach, or its `requires` can never hold |
+| a **character-specific layer** for a character who can never reach its stage | content written for the wrong character |
+| a **character-gated transition** that can never fire for a character it names | that character can't reach its starting stage, or can't satisfy its `requires` from there |
+
+**Warnings** (`PlotReachabilityWarning` — often deliberate): a stage some *particular* character can never
+reach. A character-gated branch is unreachable to everyone else by design, so this is a nudge, not a bug.
+It only escalates to an error if you also wrote character-specific content there.\
+"""),
+    ("Content warnings", """\
+Nothing ever *clears* an instruction block or a tracked item — it holds whatever was last written to it,
+and stage content is re-written every turn the stage is active. Two consequences are easy to trip over, so
+`add_plot(s)` warns (`PlotContentWarning`) about both. Neither raises: both can be deliberate.
+
+**Two plotlines writing the same block or item.** They don't take turns — *both* write it every turn, so
+whichever plotline's stage trigger is emitted last wins and the other's value never survives a turn.
+Usually one of them meant to have its own block. In `worlds/tutorial_plot/5_multiple_plotlines/` each art
+owns a block named after it, which is why that world is quiet.
+
+**A stage that leaves alone what an earlier stage sets.** If stage 1 sets `Gold` and stage 3 — reachable
+from it — doesn't, then arriving at stage 3 leaves `Gold` still showing stage 1's value, describing a
+situation the plot has already left. The usual fix is for every stage in a plotline to write the same set
+of blocks and items.
+
+This is directional: it only fires for stages **downstream** of the one that writes the target. A tracked
+item introduced at the final stage has nothing after it, so it's silent. The downstream walk deliberately
+ignores character gates and `requires` — a stale value is a hazard on any path the plot could take, not
+just one a particular character can force.\
+"""),
+    ("How the search works", """\
+The engine's `requires` gates couple plotlines together: whether a Steam transition can fire depends on
+where Fire and Water currently stand. So reachability is **not** a question about one plotline's graph — a
+state is the tuple of *one current stage per plotline*, and the search is a walk over reachable tuples.
+Nothing ever forces a plotline to advance (it sits at its stage until one of its own transitions fires),
+which is what lets a character hold one plotline still while advancing another to line up a synergy gate —
+and what makes the walk a plain BFS.
+
+Searching the full product of every plotline would be exponential (80,000 states in
+`worlds/tutorial_plot/5_multiple_plotlines/`). It doesn't have to: each plotline is decided against its
+**cluster** — itself plus everything it transitively `requires`. That cluster is closed (no transition
+inside it reads a plotline outside it), so the rest of the world provably cannot affect it:
+
+| deciding | cluster searched | states |
+|---|---|---|
+| `Fire` | `{Fire}` | 5 |
+| `Steam` | `{Fire, Water, Steam}` | 50 |
+| `Victory` | `{Fire, Water, Earth, Air, Victory}` | 1,250 |
+
+Fire's five stages are verified without ever considering how far along Air is. The largest cluster in that
+world is 1,250 states — 64× smaller than the monolithic product — and the whole check runs in
+milliseconds.
+
+`trigger_on_scenario` and `additional_conditions` are assumed **always satisfiable** — they're LLM- and
+tracked-item-judged, so we can't decide them. Everything we *can* decide is decided exactly: character
+gates, the stage graph, and `requires`. A transition with `end_game=True, can_continue=False` is treated
+as terminal — it fires, but nothing advances after it, so anything only reachable "past" a hard ending is
+correctly reported as dead.
+
+If a plotline's cluster exceeds `_MAX_SEARCH_STATES` (200,000), the search gives up on that cluster and
+warns that its reachability could not be determined, rather than reporting findings it can't stand behind.
+Nothing in it is checked.\
+"""),
+    ("Notes", """\
+- **Inputs are not mutated.** `add_plot(s)` deep-copies the world and the plotlines, so your `PlotStage` /
+  `PlotTransition` / `Plotline` objects are unchanged and safe to reuse across builds.
+- The trigger-ordering and "fires every turn" behaviours rely on the game engine's evaluation semantics;
+  the shapes here are verified structurally against exported worlds, so validate a built world in the
+  engine before relying on it.\
+"""),
+]
