@@ -1,5 +1,8 @@
-# Tooling for the JupyterLite site (`python site.py`). NOT needed to use `iw` -- the library itself has
-# no dependencies, which is what lets Pyodide run it unmodified in the browser.
+# Tooling for the JupyterLite site (`python site.py`). NOT needed to use `iw` -- the library's only
+# dependency is PyYAML, which Pyodide ships, so it runs unmodified in the browser.
+# Pinned here as well as in pyproject.toml: CI installs this file and never installs the iw package,
+# so without this line PyYAML arrives only as a transitive dependency of jupyter-events.
+pyyaml~=6.0
 jupyterlite-core~=0.8.1
 jupyterlite-pyodide-kernel~=0.8.1
 

@@ -68,8 +68,7 @@ contain the details on the two main modules of this repo:
 
 ## Working locally
 
-Requires Python 3.11 or newer. **`iw` itself has no dependencies**, which is exactly what lets Pyodide
-run it unmodified in a browser.
+Requires Python 3.14 or newer.
 
 ```bash
 git clone <this repo> && cd iw

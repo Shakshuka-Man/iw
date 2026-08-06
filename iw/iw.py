@@ -75,6 +75,13 @@ class TrackedItemAction(StrEnum):
     REPLACE = "replace"
 
 
+class NPCAction(StrEnum):
+    """What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedItemAction`
+    despite both living in an effect's `data["action"]`: the two sets never overlap."""
+    MODIFY = "modify"
+    DELETE = "delete"
+
+
 class Inequality(StrEnum):
     IS_EXACTLY = "is_exactly"
     AT_LEAST = "at_least"
@@ -98,6 +105,8 @@ class EffectType(StrEnum):
     CHANGE_PC_NAME = "effectChangePCName"
     CHANGE_PC_DESCRIPTION = "effectChangePCDescription"
     CHANGE_PC_SKILL = "effectChangePCSkill"
+    # data is {"character": <name>, "action": NPCAction, "npc": <the whole NPC, as it should end up>}
+    CHANGE_OTHER_CHARACTERS = "effectChangeOtherCharacters"
     SET_TRACKED_ITEM_VALUE = "effectSetTrackedItemValue"
     RUN_SCRIPT = "effectRunScript"  # data is a $-script block, e.g. "for each $member in $party\n  $member.hp += 5"
     FIRE_RANDOM_TRIGGER = "effectFireRandomTrigger"
@@ -121,12 +130,14 @@ class ConditionType(StrEnum):
 class LogicOperator(StrEnum):
     AND = "and"
     OR = "or"
+    # True when none of the group's sub-conditions hold -- the negation the other two cannot express.
+    NONE_OF = "none_of"
 
 
 # Tracked item ids the engine provides itself, so a trigger may reference them without the world
 # declaring them. `turn_number` is the one we rely on (a condition on it is the "every turn" idiom).
 # If you hit a validation error naming an id you know the engine supplies, add it here.
-BUILTIN_TRACKED_ITEM_IDS: set[str] = {"turn_number"}
+BUILTIN_TRACKED_ITEM_IDS: set[str] = {"turn_number", "player_action"}
 
 
 # ---- Dataclasses -----------------------------------------------------------
@@ -301,6 +312,9 @@ class TriggerEvent:
     triggerConditions: list[TriggerCondition] = field(default_factory=list)
     advancedLogic: Optional[bool] = None
     triggerOnStartOfGame: Optional[bool] = None
+    # Whether a start-of-game trigger may also fire on a later turn. Only meaningful alongside
+    # `triggerOnStartOfGame`; None -> stripped, and the engine treats it as false.
+    triggerMidGame: Optional[bool] = None
     canTriggerMoreThanOnce: Optional[bool] = None
 
 
@@ -310,6 +324,7 @@ _OPTIONAL_FIELDS: set[str] = {
     "descriptionRequest", "summaryRequest", "charSelectText",
     "instructionBlocks", "loreBookEntries", "trackedItems", "NPCs",
     "version", "autoAdvanceVersion", "designNotes", "evaluationRequest",
+    "conditions",
 }
 
 
@@ -417,6 +432,9 @@ class World:
     triggerEvents: list[TriggerEvent] = field(default_factory=list)
     victoryCondition: Optional[VictoryDefeatCondition] = None
     defeatCondition: Optional[VictoryDefeatCondition] = None
+    # The named events this world recognises. A trigger fires on one by putting the same string in an
+    # `ON_EVENT` condition's `data`, so this is the vocabulary those conditions draw on.
+    conditions: list[str] = field(default_factory=list)
 
     # Optional fields — only included in JSON when non-default
     descriptionRequest: str = ""
@@ -487,7 +505,12 @@ class World:
         duplicates("instruction block", "id", [block.id for block in self.instructionBlocks])
         duplicates("character", "id", [character.characterId for character in self.possibleCharacters])
 
-        tracked_ids = {item.id for item in self.trackedItems} | BUILTIN_TRACKED_ITEM_IDS
+        # Every skill is also a tracked item the engine makes for you, named `skill_` plus the skill's
+        # own name lowercased with spaces underscored -- so "Skill A" is readable as `skill_skill_a`.
+        # They are not in `trackedItems`, so without this a trigger reading one looks like a dangling
+        # reference.
+        skill_ids = {f"skill_{skill.replace(' ', '_').lower()}" for skill in self.skills}
+        tracked_ids = {item.id for item in self.trackedItems} | BUILTIN_TRACKED_ITEM_IDS | skill_ids
         block_ids = {block.id for block in self.instructionBlocks}
         character_ids = {character.characterId for character in self.possibleCharacters}
 

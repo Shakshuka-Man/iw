@@ -7,9 +7,11 @@ name = "iw"
 version = "0.1.0"
 description = "Build Infinite Worlds world JSON from Python, with a plot compiler on top."
 readme = "README.md"
-# StrEnum (3.11) and `X | Y` annotations at runtime.
-requires-python = ">=3.11"
-dependencies = []
+# The version Pyodide runs in the browser, and the one CI builds against. The library's own floor is
+# lower -- it needs 3.11 for StrEnum and `X | Y` annotations at runtime -- but nothing below this is
+# tested, and the worlds rely on deferred annotation evaluation, which is 3.14.
+requires-python = ">=3.14"
+dependencies = ["pyyaml"]
 
 [tool.setuptools]
 packages = ["iw"]
