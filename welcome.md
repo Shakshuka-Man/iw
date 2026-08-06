@@ -1,8 +1,11 @@
 # Build Infinite Worlds worlds in Python
 
 This is a Python notebook environment that runs entirely inside your browser tab. There is nothing to
-install, nothing gets uploaded, no code runs on a server, and there is no account to make. To reset any
-changes made, click `Help` -> `Clear Browser Data`.
+install, nothing gets uploaded, no code runs on a server, and there is no account to make. Close the tab
+and it is gone.
+
+Every world here is a notebook. Run one and it writes a world JSON that you can paste straight into
+Infinite Worlds.
 
 ## Try it now
 
@@ -97,7 +100,7 @@ later you will want a proper editor, version control, and a world too big to hol
 happens, you clone the repository and run the very same files -- the notebooks on this site are *generated
 from* the `world.py` files in it, so nothing you have learned is thrown away.
 
-You need three things: Python (3.11 or newer), Git, and an editor. Rather than reinvent those instructions
+You need three things: Python (3.14 or newer), Git, and an editor. Rather than reinvent those instructions
 here, follow your editor's own getting-started guide -- each one walks you through installing Python and the
 editor together:
 

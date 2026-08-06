@@ -21,16 +21,18 @@ rules   = iw.InstructionBlock(name="Rules", content="Be terse.")
 dragons = iw.LoreBookEntry(name="Dragons", content="They sleep.", keywords=["dragon"])
 ambush  = iw.TriggerEvent(name="Ambush")
 storm   = iw.TriggerEvent(name="Storm")
-hero    = iw.PossibleCharacter(name="Hero")\
+hero    = iw.PossibleCharacter(name="Hero")
+ferryman = iw.NPC(name="The Ferryman", detail="A silent boatman.")\
 '''
 
 TITLE = "`iw` — the world format"
 
 INTRO = """\
-`iw` is a small, dependency-free Python library that mirrors the game engine's world-definition JSON as
-typed dataclasses, and serializes them to and from that JSON. Use it to build world definitions
-programmatically, or to read and round-trip existing ones. It depends only on the standard library and is
-fully standalone — it does **not** require [`plot`](plot.md).
+`iw` is a small Python library that mirrors the game engine's world-definition JSON as typed dataclasses,
+and serializes them to and from that JSON. Use it to build world definitions programmatically, or to read
+and round-trip existing ones. Its only dependency is PyYAML, which Pyodide ships, so it runs in a browser
+unchanged — and it is standalone in the sense that matters here: it does **not** require
+[`plot`](plot.md).
 
 This page is **every object in `iw`, every attribute on it, and every enum member** — what each one is,
 what it is for, and how it is used. The structure is read out of the dataclasses themselves, so it cannot
@@ -139,6 +141,9 @@ FIELDS = {
         "triggerEvents": "The event system: everything that fires in response to play.",
         "victoryCondition": "How the world is won.",
         "defeatCondition": "How the world is lost.",
+        "conditions": "The named events this world recognises. An `ON_EVENT` condition fires on one by "
+                      "carrying the same string in its `data`, so this is the vocabulary those "
+                      "conditions draw on rather than each of them inventing its own wording.",
         "descriptionRequest": "Instructions for generating the world description.",
         "summaryRequest": "Instructions for summarising the story so far.",
         "charSelectText": "Text shown on the character-selection screen.",
@@ -183,6 +188,8 @@ FIELDS = {
         "triggerConditions": "What has to hold for it to fire.",
         "advancedLogic": "Required before a condition may be a logic group.",
         "triggerOnStartOfGame": "Fires once, before the first turn.",
+        "triggerMidGame": "Lets a start-of-game trigger fire on later turns too. Only meaningful "
+                          "alongside `triggerOnStartOfGame` — on its own it does nothing.",
         "canTriggerMoreThanOnce": "Lets it fire again; otherwise it fires once ever.",
     },
     "TriggerCondition": {
@@ -329,6 +336,11 @@ ENUMS = {
     "LogicOperator": {
         "AND": ("Every sub-condition must hold.", 'iw.TriggerCondition(category="logic", operator=iw.LogicOperator.AND, data=[tracked_item_is(mood, "uneasy"), tracked_item_is(crew, "2", inequality=iw.Inequality.AT_MOST)])'),
         "OR": ("Any sub-condition may hold.", 'iw.TriggerCondition(category="logic", operator=iw.LogicOperator.OR, data=[tracked_item_is(mood, "uneasy"), tracked_item_is(mood, "afraid")])'),
+        "NONE_OF": ("No sub-condition may hold — the negation the other two cannot express. Wrapping a single condition in it is how you say *unless*.", 'iw.TriggerCondition(category="logic", operator=iw.LogicOperator.NONE_OF, data=[tracked_item_is(mood, "calm")])'),
+    },
+    "NPCAction": {
+        "MODIFY": ("Replace the NPC with the one in `data[\"npc\"]`, matched by `data[\"character\"]`. The whole NPC is written, not the changed fields, so send it as it should end up.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})'),
+        "DELETE": ("Remove the NPC from the world.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.DELETE, "npc": {"id": ferryman.id, "name": ferryman.name}})'),
     },
     "ConditionType": {
         "ON_TURN": ("Fires on turn **≥ N**, not exactly N. `data=1` is the \"every turn\" idiom.", 'iw.TriggerCondition(type=iw.ConditionType.ON_TURN, category="condition", data=1)'),
@@ -362,6 +374,7 @@ ENUMS = {
         "CHANGE_VICTORY_CONDITION": ("Replaces the victory condition.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_VICTORY_CONDITION, data={"condition": "I reach the lighthouse", "text": "You made it."})'),
         "CHANGE_DEFEAT_CONDITION": ("Replaces the defeat condition.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_DEFEAT_CONDITION, data={"condition": "the crew all die", "text": "Nobody came home."})'),
         "CHANGE_PC_SKILL": ("Raises (`increase=True`) or lowers a skill by `amount`, clamped at `minmax`.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_SKILL, data={"name": "Nerve", "amount": 1, "minmax": 5, "increase": True})'),
+        "CHANGE_OTHER_CHARACTERS": ("Rewrites or removes an NPC. `data` is `{character, action, npc}` — `character` names the one to act on, `action` is an `NPCAction`, and `npc` is the whole NPC as it should end up.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})'),
         "ENDS_GAME": ("Ends the game. `data` is the `can_continue` value — `False` is a hard ending.", 'iw.TriggerEffect(type=iw.EffectType.ENDS_GAME, data=False)'),
     },
 }
@@ -411,7 +424,14 @@ build the effect that writes a tracked item and the condition that reads one. **
 payload for both carries the item's id *twice* — inside `data`, and again in the sibling `trackedItemID`
 field — and nothing checks that the two copies agree; a world whose copies disagree loads perfectly and
 silently never fires. Both take the item itself, or a raw id string for engine built-ins like
-`turn_number` that are not items in your world.\
+`turn_number` and `player_action` that are not items in your world. Those two are listed in
+`iw.BUILTIN_TRACKED_ITEM_IDS`, which is what stops `validate()` rejecting a trigger that reads one; add
+to it if you meet another the engine supplies.
+
+**Every skill is a tracked item too.** The engine makes one per entry in `skills`, named `skill_` plus
+the skill's own name lowercased with spaces underscored — a world with `skills=["Skill A", "Skill B"]`
+can read `skill_skill_a` and `skill_skill_b`. They never appear in `trackedItems`, so `validate()`
+derives them from `skills` rather than being told about them; a skill you rename renames its item.\
 """),
     ("Notes", """\
 - Dataclasses use **identity** equality and hashing (`eq=False`), so instances are hashable and can be
