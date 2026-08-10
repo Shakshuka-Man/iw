@@ -16,6 +16,7 @@ underlying tracked items and triggers for us.
 | 3 | [**3_branching**](3_branching/world.ipynb) | Forks in the story, and paths that split and rejoin.              |
 | 4 | [**4_characters**](4_characters/world.ipynb) | A plot that is experienced differently by different characters.   |
 | 5 | [**5_multiple_plotlines**](5_multiple_plotlines/world.ipynb) | Many plots running at once, gating each other.                    |
+| 6 | [**6_revisiting_stages**](6_revisiting_stages/world.ipynb) | A plot that goes back to stages it has already been, and `starting_stage`. |
 
 ## References
 

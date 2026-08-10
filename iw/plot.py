@@ -38,10 +38,11 @@ class PlotStage:
     `plot_details` -- so it can override the same instruction block or tracked item for those
     characters. A character may appear in at most one of these entries.
 
-    There is no `initial` flag: the plotline starts at whichever stage nothing transitions into, and
-    exactly one stage must fit that description. Both fields may be assigned after construction, which
-    is what lets you declare a stage, wire the transition that reaches it, and only then write the
-    content you arrive at -- the order the plot actually reads in.
+    A stage does not declare that it is the first one. By default the plotline starts at whichever stage
+    nothing transitions into, and exactly one stage must fit that description -- name a `starting_stage`
+    on the `Plotline` when that is not true of your plot. Both fields may be assigned after
+    construction, which is what lets you declare a stage, wire the transition that reaches it, and only
+    then write the content you arrive at -- the order the plot actually reads in.
 
     `description` is for you, not for the engine: it is never emitted, and nothing reads it but the
     warnings and errors below. A complaint about "stage '3'" tells you nothing when you have thirty of
@@ -86,6 +87,10 @@ class Plotline:
     plot_transitions: list[PlotTransition]
     plot_stage_tracker: iw.TrackedItem | None = None
     plot_change_tracker: iw.TrackedItem | None = None
+    # Where the plot begins. Left None, it is deduced: the one stage nothing transitions into. Name it
+    # when the transitions cannot say -- a plot that loops back to its opening has no such stage, and a
+    # plot you want to begin partway through has more than one.
+    starting_stage: PlotStage | None = None
 
 
 def _as_list(value):
@@ -173,7 +178,14 @@ class PlotlineHandler:
         # stages), so it runs over all of them at once.
         for plotline in self.plotlines:
             self._validate_transitions(plotline)
-            self._initial[id(plotline)] = self._find_initial_stage(plotline)
+            initial = self._find_initial_stage(plotline)
+            self._initial[id(plotline)] = initial
+            # The tracker starts at the opening stage, rather than at a sentinel the start-of-game
+            # trigger then replaces. Written here rather than where the tracker is made because which
+            # stage is the opening one is not known until the transitions have been read -- and written
+            # even to a tracker you supplied, since a plot whose tracker starts elsewhere is at a stage
+            # it never entered.
+            plotline.plot_stage_tracker.initialValue = str(initial.internal_id)
 
         # Content warnings first, so they are still emitted if reachability then finds a hard error.
         self._warn_contested_targets()
@@ -357,13 +369,22 @@ class PlotlineHandler:
                     )
 
     def _find_initial_stage(self, plotline: Plotline) -> PlotStage:
-        """Where the plotline starts: the one stage nothing transitions into. Being the start is not
-        something you declare, it is what the transitions say -- and every character starts there, since
-        stages are not character-gated.
+        """Where the plotline starts, and where every character starts, since stages are not
+        character-gated.
 
-        Exactly one stage must fit. Two would mean two places to start, and the engine would set the
-        stage tracker twice at game start; none means every stage sits downstream of another, so the
-        plot has no way in (you have wired a closed cycle)."""
+        A named `starting_stage` settles it. Otherwise it is what the transitions say: the one stage
+        nothing transitions into. Exactly one stage must fit. Two would mean two places to start, and
+        the engine would set the stage tracker twice at game start; none means every stage sits
+        downstream of another, so the plot has no way in (you have wired a closed cycle) -- which is
+        legal, but only once you say where to enter it."""
+        if plotline.starting_stage is not None:
+            if not any(stage is plotline.starting_stage for stage in plotline.plot_stages):
+                raise ValueError(
+                    f"Plotline {plotline.name!r} names a starting_stage "
+                    f"({_stage_label(plotline.starting_stage)}) that is not one of its own stages."
+                )
+            return plotline.starting_stage
+
         targeted = {id(transition.ending_stage) for transition in plotline.plot_transitions}
         candidates = [stage for stage in plotline.plot_stages if id(stage) not in targeted]
         if len(candidates) != 1:
@@ -371,8 +392,8 @@ class PlotlineHandler:
             raise ValueError(
                 f"Plotline {plotline.name!r} must have exactly one initial stage -- a stage with no "
                 f"transition into it, where every character starts -- but {len(candidates)} stages have "
-                f"no transition into them ({found}). Every other stage needs a transition that reaches "
-                "it; a plotline whose every stage is transitioned into can never begin."
+                f"no transition into them ({found}). Give every other stage a transition that reaches "
+                "it, or name the plotline's starting_stage to say where to begin."
             )
         return candidates[0]
 
@@ -492,14 +513,26 @@ class PlotlineHandler:
                 if not complete:
                     undetermined.add(id(plotline))
         for plotline_id in undetermined:
-            name = next(p.name for p in self.plotlines if id(p) == plotline_id).__repr__()
+            plotline = next(p for p in self.plotlines if id(p) == plotline_id)
             warnings.warn(
-                f"Plotline {name} depends on too many other plotlines to search "
+                f"Plotline {plotline.name!r} depends on too many other plotlines to search "
                 f"({_MAX_SEARCH_STATES:,}+ possible states), so its reachability could not be fully "
                 "determined. Its stages and transitions have not been checked.",
                 PlotReachabilityWarning,
                 stacklevel=2,
             )
+            # The search is what normally reports an unreachable stage, and it did not run. A stage with
+            # nothing transitioning into it that is not where the plot begins is unreachable on the
+            # transitions alone, so say that much without searching.
+            targeted = {id(transition.ending_stage) for transition in plotline.plot_transitions}
+            for stage in plotline.plot_stages:
+                if id(stage) not in targeted and stage is not self._initial[plotline_id]:
+                    warnings.warn(
+                        f"Stage {_stage_label(stage)} of plotline {plotline.name!r} has no transition "
+                        "into it and is not where the plot begins, so nothing can ever reach it.",
+                        PlotReachabilityWarning,
+                        stacklevel=2,
+                    )
 
         errors: list[str] = []
         for plotline in self.plotlines:
@@ -696,10 +729,15 @@ class PlotlineHandler:
         )
 
     def _build_start_triggers(self, plotline: Plotline, stage: PlotStage) -> list[iw.TriggerEvent]:
-        """Fire once at game start for the initial stage: set the stage tracker and apply the stage's
-        content. The first trigger runs for whichever character was chosen -- it carries the stage
-        tracker, the situation slots, and the everyone-layer's content. Each character-specific layer
-        then gets its own trigger, emitted after it so it can override the same blocks and items."""
+        """Set the stage tracker and apply the opening stage's content, before the first turn and on any
+        later turn the plot is back at that stage. The first trigger runs for whichever character was
+        chosen -- it carries the stage tracker, the situation slots, and the everyone-layer's content.
+        Each character-specific layer then gets its own trigger, emitted after it so it can override the
+        same blocks and items.
+
+        Gated on being at the stage, exactly as every other stage's triggers are. Without that condition
+        a mid-game firing would drag the plot back to its opening every turn; with it, a plot that loops
+        round to where it began is served the same way it was on turn one."""
         stage_tracker = plotline.plot_stage_tracker
         assert stage_tracker is not None  # resolved during setup
 
@@ -713,15 +751,21 @@ class PlotlineHandler:
         triggers = [iw.TriggerEvent(
             name=name,
             triggerOnStartOfGame=True,
+            triggerMidGame=True,
             canTriggerMoreThanOnce=True,
+            triggerConditions=[self._at_stage_condition(plotline, stage)],
             triggerEffects=base_effects,
         )]
         for details in stage.character_specific_plot_details:
             triggers.append(iw.TriggerEvent(
                 name=self._layer_trigger_name(name, details),
                 triggerOnStartOfGame=True,
+                triggerMidGame=True,
                 canTriggerMoreThanOnce=True,
-                triggerConditions=self._character_conditions(details),
+                triggerConditions=[
+                    self._at_stage_condition(plotline, stage),
+                    *self._character_conditions(details),
+                ],
                 triggerEffects=self._content_effects(details),
             ))
         return triggers
@@ -893,7 +937,10 @@ def add_plots(world: iw.World, plotlines: list[Plotline], shared_gate: bool = Fa
     PlotlineHandler(world, plotlines, shared_gate=shared_gate).run()
 
 
-def add_plot(world: iw.World, plot_stages: list[PlotStage], plot_transitions: list[PlotTransition]) -> None:
+def add_single_plot(world: iw.World, plot_stages: list[PlotStage],
+                    plot_transitions: list[PlotTransition],
+                    starting_stage: PlotStage | None = None) -> None:
     """Single-plotline convenience: build one plotline named "Plot" and add it to `world`, in place. For
-    a custom name or trackers, call add_plots with an explicit Plotline (see add_plots)."""
-    add_plots(world, [Plotline("Plot", plot_stages, plot_transitions)])
+    a custom name or trackers, call add_plots with an explicit Plotline (see add_plots). `starting_stage`
+    says where the plot begins; left out, it is deduced from the transitions (see Plotline)."""
+    add_plots(world, [Plotline("Plot", plot_stages, plot_transitions, starting_stage=starting_stage)])

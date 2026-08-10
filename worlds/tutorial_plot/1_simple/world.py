@@ -126,7 +126,7 @@ STAGE_4.plot_details = plot.PlotStageDetails(
 # will create all the tracked items, triggers and other behind-the-scenes machinery to make this plot work.
 
 # %%
-plot.add_plot(
+plot.add_single_plot(
     world=world,
     plot_stages=[STAGE_1, STAGE_2, STAGE_3, STAGE_4],
     plot_transitions=[TO_STAGE_2, TO_STAGE_3, TO_STAGE_4],

@@ -137,7 +137,7 @@ CORRUPTION.plot_details = plot.PlotStageDetails(instruction_blocks={
 })
 
 # %%
-plot.add_plot(
+plot.add_single_plot(
     world=world,
     plot_stages=[INVESTIGATION, WITNESSES, EVIDENCE, INFORMANT, SUSPECT, JUSTICE, CORRUPTION],
     plot_transitions=[TO_WITNESSES, TO_EVIDENCE, TO_INFORMANT, TO_SUSPECT, TO_JUSTICE, TO_CORRUPTION],

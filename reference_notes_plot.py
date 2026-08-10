@@ -28,7 +28,7 @@ import iw
 import plot
 ```
 
-**None of these objects are in the world format.** They are the description you write; `add_plot`
+**None of these objects are in the world format.** They are the description you write; `add_single_plot`
 compiles them down into the tracked items and trigger events of the `iw` layer, and it is that output the
 engine ever sees. So a `PlotStage` has no id and no JSON — it has an `internal_id`, which is bookkeeping
 for the compiler.
@@ -44,7 +44,7 @@ for the compiler.
   player **scenario** and/or other conditions.
 - **`Plotline`** — a named bundle of stages + transitions that advances independently, with its own stage
   tracker.
-- **`add_plot` / `add_plots`** — compile plotline(s) into a `World`.
+- **`add_single_plot` / `add_plots`** — compile plotline(s) into a `World`.
 
 ## How it compiles
 
@@ -96,7 +96,7 @@ B = plot.PlotStage()
 A_TO_B = plot.PlotTransition(starting_stage=A, ending_stage=B, trigger_on_scenario="I do the thing")
 B.plot_details = plot.PlotStageDetails(instruction_blocks={block: "the next situation"})
 
-plot.add_plot(world, [A, B], [A_TO_B])
+plot.add_single_plot(world, [A, B], [A_TO_B])
 ```
 
 `A` is the initial stage — not because it says so, but because nothing transitions into it.\
@@ -173,6 +173,10 @@ FIELDS = {
         "plot_transitions": "Every edge between them.",
         "plot_stage_tracker": "The hidden tracked item holding the current stage. Filled in by the compiler.",
         "plot_change_tracker": "The hidden per-turn gate. Filled in by the compiler.",
+        "starting_stage": "Where the plot begins. Left out, it is deduced: the one stage nothing "
+                          "transitions into. Name it when the transitions cannot say — a plot that loops "
+                          "back to its opening has no such stage, and one you want to begin partway "
+                          "through has several. The stage tracker's initial value is this stage.",
     },
 }
 
@@ -183,10 +187,11 @@ Adds every plotline's tracked items and triggers to `world`, in place (it return
 independently and several may advance in the same turn; with `shared_gate=True` a single gate is shared,
 allowing at most one advance across all plotlines per turn.\
 """,
-    "add_plot": """\
-Single-plotline sugar: one plotline named `"Plot"`.
+    "add_single_plot": """\
+Single-plotline sugar: one plotline named `"Plot"`. Takes `starting_stage` too, forwarding it to the
+`Plotline` it builds.
 
-The five tutorial worlds under `worlds/tutorial_plot/` walk these features in increasing order of
+The six tutorial worlds under `worlds/tutorial_plot/` walk these features in increasing order of
 complexity — [`worlds/tutorial_plot/README.md`](../worlds/tutorial_plot/README.md) is the guided tour.\
 """,
 }
@@ -220,7 +225,7 @@ Two things to keep in mind:
 - **no dead content** — see Reachability.\
 """),
     ("Reachability", """\
-`add_plot(s)` searches, for each playable character, every way that character could ever advance the plot,
+`add_single_plot(s)` searches, for each playable character, every way that character could ever advance the plot,
 and refuses to build a world containing content they can never see.
 
 **Errors** (dead content — always a bug):
@@ -239,7 +244,7 @@ It only escalates to an error if you also wrote character-specific content there
     ("Content warnings", """\
 Nothing ever *clears* an instruction block or a tracked item — it holds whatever was last written to it,
 and stage content is re-written every turn the stage is active. Two consequences are easy to trip over, so
-`add_plot(s)` warns (`PlotContentWarning`) about both. Neither raises: both can be deliberate.
+`add_single_plot(s)` warns (`PlotContentWarning`) about both. Neither raises: both can be deliberate.
 
 **Two plotlines writing the same block or item.** They don't take turns — *both* write it every turn, so
 whichever plotline's stage trigger is emitted last wins and the other's value never survives a turn.
@@ -290,7 +295,7 @@ warns that its reachability could not be determined, rather than reporting findi
 Nothing in it is checked.\
 """),
     ("Notes", """\
-- **Inputs are not mutated.** `add_plot(s)` deep-copies the world and the plotlines, so your `PlotStage` /
+- **Inputs are not mutated.** `add_single_plot(s)` deep-copies the world and the plotlines, so your `PlotStage` /
   `PlotTransition` / `Plotline` objects are unchanged and safe to reuse across builds.
 - The trigger-ordering and "fires every turn" behaviours rely on the game engine's evaluation semantics;
   the shapes here are verified structurally against exported worlds, so validate a built world in the

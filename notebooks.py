@@ -128,7 +128,7 @@ PAGES = [
             "two transitions cannot fire at once. Tutorial 2 builds that bookkeeping by hand, to show "
             "there is nothing magic in it; the other worlds let the compiler write it.\n"
             "\n"
-            "Five worlds, in increasing order of what they ask of the compiler."
+            "Six worlds, in increasing order of what they ask of the compiler."
         ),
         "worlds": [
             "tutorial_plot_1_simple",
@@ -136,6 +136,7 @@ PAGES = [
             "tutorial_plot_3_branching",
             "tutorial_plot_4_characters",
             "tutorial_plot_5_multiple_plotlines",
+            "tutorial_plot_6_hub_and_spoke",
         ],
     },
 ]
