@@ -9,7 +9,7 @@ import iw
 import plot
 </syntaxhighlight>
 
-'''None of these objects are in the world format.''' They are the description you write; <code>add_plot</code> compiles them down into the tracked items and trigger events of the <code>iw</code> layer, and it is that output the engine ever sees. So a <code>PlotStage</code> has no id and no JSON — it has an <code>internal_id</code>, which is bookkeeping for the compiler.
+'''None of these objects are in the world format.''' They are the description you write; <code>add_single_plot</code> compiles them down into the tracked items and trigger events of the <code>iw</code> layer, and it is that output the engine ever sees. So a <code>PlotStage</code> has no id and no JSON — it has an <code>internal_id</code>, which is bookkeeping for the compiler.
 
 == Concepts ==
 
@@ -17,7 +17,7 @@ import plot
 * '''<code>PlotStageDetails</code>''' — one '''layer''' of stage content (<code>instruction_blocks</code>, <code>tracked_items</code>, <code>additional_effects</code>), optionally scoped to specific <code>characters</code>. Re-applied every turn the stage is active.
 * '''<code>PlotTransition</code>''' — an edge from one (or more) starting stage(s) to an ending stage, fired by a player '''scenario''' and/or other conditions.
 * '''<code>Plotline</code>''' — a named bundle of stages + transitions that advances independently, with its own stage tracker.
-* '''<code>add_plot</code> / <code>add_plots</code>''' — compile plotline(s) into a <code>World</code>.
+* '''<code>add_single_plot</code> / <code>add_plots</code>''' — compile plotline(s) into a <code>World</code>.
 
 == How it compiles ==
 
@@ -106,7 +106,7 @@ B = plot.PlotStage()
 A_TO_B = plot.PlotTransition(starting_stage=A, ending_stage=B, trigger_on_scenario="I do the thing")
 B.plot_details = plot.PlotStageDetails(instruction_blocks={block: "the next situation"})
 
-plot.add_plot(world, [A, B], [A_TO_B])
+plot.add_single_plot(world, [A, B], [A_TO_B])
 </syntaxhighlight>
 
 <code>A</code> is the initial stage — not because it says so, but because nothing transitions into it.
@@ -166,6 +166,8 @@ A named plot: stages + transitions that advance independently of other plotlines
 | <code>plot_stage_tracker</code> || `TrackedItem \ || None` || <code>None</code> || The hidden tracked item holding the current stage. Filled in by the compiler.
 |-
 | <code>plot_change_tracker</code> || `TrackedItem \ || None` || <code>None</code> || The hidden per-turn gate. Filled in by the compiler.
+|-
+| <code>starting_stage</code> || `PlotStage \ || None` || <code>None</code> || Where the plot begins. Left out, it is deduced: the one stage nothing transitions into. Name it when the transitions cannot say — a plot that loops back to its opening has no such stage, and one you want to begin partway through has several. The stage tracker's initial value is this stage.
 |}
 
 The two tracker fields are filled in by the compiler. You name the plotline and list its stages and transitions; the trackers are what it compiles ''to''.
@@ -178,13 +180,13 @@ Build all the given plotlines into <code>world</code>, in place: the tracked ite
 
 Adds every plotline's tracked items and triggers to <code>world</code>, in place (it returns nothing). With <code>shared_gate=False</code> (the default) each plotline has its own per-turn gate, so plotlines advance independently and several may advance in the same turn; with <code>shared_gate=True</code> a single gate is shared, allowing at most one advance across all plotlines per turn.
 
-=== <code>add_plot(world: World, plot_stages: list[PlotStage], plot_transitions: list[PlotTransition]) -&gt; None</code> ===
+=== <code>add_single_plot(world: World, plot_stages: list[PlotStage], plot_transitions: list[PlotTransition], starting_stage: PlotStage | None = None) -&gt; None</code> ===
 
-Single-plotline convenience: build one plotline named "Plot" and add it to <code>world</code>, in place. For a custom name or trackers, call add_plots with an explicit Plotline (see add_plots).
+Single-plotline convenience: build one plotline named "Plot" and add it to <code>world</code>, in place. For a custom name or trackers, call add_plots with an explicit Plotline (see add_plots). <code>starting_stage</code> says where the plot begins; left out, it is deduced from the transitions (see Plotline).
 
-Single-plotline sugar: one plotline named <code>"Plot"</code>.
+Single-plotline sugar: one plotline named <code>"Plot"</code>. Takes <code>starting_stage</code> too, forwarding it to the <code>Plotline</code> it builds.
 
-The five tutorial worlds under <code>worlds/tutorial_plot/</code> walk these features in increasing order of complexity — [../worlds/tutorial_plot/README.md <code>worlds/tutorial_plot/README.md</code>] is the guided tour.
+The six tutorial worlds under <code>worlds/tutorial_plot/</code> walk these features in increasing order of complexity — [../worlds/tutorial_plot/README.md <code>worlds/tutorial_plot/README.md</code>] is the guided tour.
 
 == Stage vs. transition <code>tracked_items</code> ==
 
@@ -209,7 +211,7 @@ Two things to keep in mind:
 
 == Reachability ==
 
-<code>add_plot(s)</code> searches, for each playable character, every way that character could ever advance the plot, and refuses to build a world containing content they can never see.
+<code>add_single_plot(s)</code> searches, for each playable character, every way that character could ever advance the plot, and refuses to build a world containing content they can never see.
 
 '''Errors''' (dead content — always a bug):
 
@@ -228,7 +230,7 @@ Two things to keep in mind:
 
 == Content warnings ==
 
-Nothing ever ''clears'' an instruction block or a tracked item — it holds whatever was last written to it, and stage content is re-written every turn the stage is active. Two consequences are easy to trip over, so <code>add_plot(s)</code> warns (<code>PlotContentWarning</code>) about both. Neither raises: both can be deliberate.
+Nothing ever ''clears'' an instruction block or a tracked item — it holds whatever was last written to it, and stage content is re-written every turn the stage is active. Two consequences are easy to trip over, so <code>add_single_plot(s)</code> warns (<code>PlotContentWarning</code>) about both. Neither raises: both can be deliberate.
 
 '''Two plotlines writing the same block or item.''' They don't take turns — ''both'' write it every turn, so whichever plotline's stage trigger is emitted last wins and the other's value never survives a turn. Usually one of them meant to have its own block. In <code>worlds/tutorial_plot/5_multiple_plotlines/</code> each art owns a block named after it, which is why that world is quiet.
 
@@ -260,5 +262,5 @@ If a plotline's cluster exceeds <code>_MAX_SEARCH_STATES</code> (200,000), the s
 
 == Notes ==
 
-* '''Inputs are not mutated.''' <code>add_plot(s)</code> deep-copies the world and the plotlines, so your <code>PlotStage</code> / <code>PlotTransition</code> / <code>Plotline</code> objects are unchanged and safe to reuse across builds.
+* '''Inputs are not mutated.''' <code>add_single_plot(s)</code> deep-copies the world and the plotlines, so your <code>PlotStage</code> / <code>PlotTransition</code> / <code>Plotline</code> objects are unchanged and safe to reuse across builds.
 * The trigger-ordering and "fires every turn" behaviours rely on the game engine's evaluation semantics; the shapes here are verified structurally against exported worlds, so validate a built world in the engine before relying on it.
