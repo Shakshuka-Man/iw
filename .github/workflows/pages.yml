@@ -6,9 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
-# For actions/deploy-pages.
+# pages/id-token are for actions/deploy-pages; contents: write is for the regenerate job's push.
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -18,13 +18,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The docs are generated, and forgetting to re-run the generators is the most common way to redden a
+  # pull request. Rather than only complain about it, regenerate and commit the result -- and do it in a
+  # job the build waits on, so the staleness checks below run against the regenerated tree.
+  regenerate:
+    # Only a pull request has a branch to push back to, and only one from this repo gets a token that
+    # can. A fork's pull request skips this and is checked as it stands.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      # The branch itself rather than the merge commit, so there is somewhere to push back to.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      # iw's own dependency. The site tooling is not needed here -- the generators only read the repo.
+      - run: pip install pyyaml
+
+      # Order matters: docs.py converts the Markdown the other two write, so it goes last. Running only
+      # docs.py would faithfully convert stale Markdown.
+      - name: Run the generators
+        run: |
+          python reference.py
+          python notebooks.py
+          python docs.py
+
+      # Only docs/ is generated source. The notebooks under out/ are artifacts, and gitignored.
+      - name: Commit whatever changed
+        run: |
+          if git diff --quiet -- docs; then
+            echo "The committed docs were already up to date; nothing to do."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          git commit -m "Regenerate the docs"
+          git push
+
   build:
+    # Wait for the regenerate job, so the checks below see its commit. It is skipped for pushes to main
+    # and for forks, which must not skip the build with it -- hence always().
+    needs: regenerate
+    if: ${{ always() && needs.regenerate.result != 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Matches the Python that Pyodide runs in the browser, so what is tested here is what a reader
+      # of the site actually executes.
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
 
       - run: pip install -r requirements-site.txt
