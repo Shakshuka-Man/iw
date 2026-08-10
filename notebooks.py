@@ -136,7 +136,7 @@ PAGES = [
             "tutorial_plot_3_branching",
             "tutorial_plot_4_characters",
             "tutorial_plot_5_multiple_plotlines",
-            "tutorial_plot_6_hub_and_spoke",
+            "tutorial_plot_6_revisiting_stages",
         ],
     },
 ]
