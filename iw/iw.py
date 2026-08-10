@@ -78,6 +78,7 @@ class TrackedItemAction(StrEnum):
 class NPCAction(StrEnum):
     """What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedItemAction`
     despite both living in an effect's `data["action"]`: the two sets never overlap."""
+    ADD = "add"
     MODIFY = "modify"
     DELETE = "delete"
 
@@ -105,7 +106,8 @@ class EffectType(StrEnum):
     CHANGE_PC_NAME = "effectChangePCName"
     CHANGE_PC_DESCRIPTION = "effectChangePCDescription"
     CHANGE_PC_SKILL = "effectChangePCSkill"
-    # data is {"character": <name>, "action": NPCAction, "npc": <the whole NPC, as it should end up>}
+    # data is {"character": <name>, "action": NPCAction, "npc": <the whole NPC, as it should end up>}.
+    # "character" is None for NPCAction.ADD, which has no existing NPC to name.
     CHANGE_OTHER_CHARACTERS = "effectChangeOtherCharacters"
     SET_TRACKED_ITEM_VALUE = "effectSetTrackedItemValue"
     RUN_SCRIPT = "effectRunScript"  # data is a $-script block, e.g. "for each $member in $party\n  $member.hp += 5"

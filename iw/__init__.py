@@ -1,7 +1,7 @@
 """`iw` — build Infinite Worlds world JSON from Python.
 
     import iw              # the data model: a 1-1 mirror of the Infinite Worlds objects
-    from iw import plot    # the plot compiler: PlotStage, PlotStageDetails, PlotTransition, add_plot(s)
+    from iw import plot    # the plot compiler: PlotStage, PlotStageDetails, PlotTransition, add_single_plot(s)
     from iw import tools   # convenience constructors for the tracked-item trigger payloads
 
 `iw.iw`'s public API is re-exported here, so `iw.World(...)` works after a plain `import iw`. `plot` and

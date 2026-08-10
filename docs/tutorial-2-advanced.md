@@ -320,6 +320,7 @@ import characters
 import tracked_items
 import wrecks
 import sanity_bands
+import victory_defeat
 ```
 
 ### Assembly
@@ -336,6 +337,7 @@ characters.install_into(world)       # the two skills, the three keepers, the bo
 tracked_items.install_into(world)    # the Sanity meter and the day counter
 wrecks.install_into(world)           # a KIB per ship, and the roster that names them
 sanity_bands.install_into(world)     # the ten band triggers, wired to tracked_items' SANITY
+victory_defeat.install_into(world)   # the victory and defeat conditions, and the triggers that fire them
 ```
 
 ### Output

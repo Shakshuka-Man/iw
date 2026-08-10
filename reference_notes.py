@@ -22,7 +22,8 @@ dragons = iw.LoreBookEntry(name="Dragons", content="They sleep.", keywords=["dra
 ambush  = iw.TriggerEvent(name="Ambush")
 storm   = iw.TriggerEvent(name="Storm")
 hero    = iw.PossibleCharacter(name="Hero")
-ferryman = iw.NPC(name="The Ferryman", detail="A silent boatman.")\
+ferryman = iw.NPC(name="The Ferryman", detail="A silent boatman.")
+harbourmaster = iw.NPC(name="The Harbourmaster", detail="Keeper of the tide tables.")\
 '''
 
 TITLE = "`iw` — the world format"
@@ -339,6 +340,7 @@ ENUMS = {
         "NONE_OF": ("No sub-condition may hold — the negation the other two cannot express. Wrapping a single condition in it is how you say *unless*.", 'iw.TriggerCondition(category="logic", operator=iw.LogicOperator.NONE_OF, data=[tracked_item_is(mood, "calm")])'),
     },
     "NPCAction": {
+        "ADD": ("Bring a new NPC into the world mid-game. The only action with nothing to match on, so `data[\"character\"]` is `None`; the NPC in `data[\"npc\"]` is the one being created. It carries no `positionInList` either — the engine appends it and assigns the position, where `MODIFY` and `DELETE` name an NPC that already has one.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": None, "action": iw.NPCAction.ADD, "npc": {"id": harbourmaster.id, "name": harbourmaster.name, "detail": harbourmaster.detail}})'),
         "MODIFY": ("Replace the NPC with the one in `data[\"npc\"]`, matched by `data[\"character\"]`. The whole NPC is written, not the changed fields, so send it as it should end up.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})'),
         "DELETE": ("Remove the NPC from the world.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.DELETE, "npc": {"id": ferryman.id, "name": ferryman.name}})'),
     },
@@ -374,7 +376,7 @@ ENUMS = {
         "CHANGE_VICTORY_CONDITION": ("Replaces the victory condition.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_VICTORY_CONDITION, data={"condition": "I reach the lighthouse", "text": "You made it."})'),
         "CHANGE_DEFEAT_CONDITION": ("Replaces the defeat condition.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_DEFEAT_CONDITION, data={"condition": "the crew all die", "text": "Nobody came home."})'),
         "CHANGE_PC_SKILL": ("Raises (`increase=True`) or lowers a skill by `amount`, clamped at `minmax`.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_SKILL, data={"name": "Nerve", "amount": 1, "minmax": 5, "increase": True})'),
-        "CHANGE_OTHER_CHARACTERS": ("Rewrites or removes an NPC. `data` is `{character, action, npc}` — `character` names the one to act on, `action` is an `NPCAction`, and `npc` is the whole NPC as it should end up.", 'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})'),
+        "CHANGE_OTHER_CHARACTERS": ("Adds, rewrites or removes an NPC. `data` is `{character, action, npc}` — `character` names the one to act on (`None` when adding, as there is nothing to match yet), `action` is an `NPCAction`, and `npc` is the whole NPC as it should end up.",'iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})'),
         "ENDS_GAME": ("Ends the game. `data` is the `can_continue` value — `False` is a hard ending.", 'iw.TriggerEffect(type=iw.EffectType.ENDS_GAME, data=False)'),
     },
 }

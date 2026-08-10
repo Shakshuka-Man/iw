@@ -290,6 +290,7 @@ ambush  = iw.TriggerEvent(name="Ambush")
 storm   = iw.TriggerEvent(name="Storm")
 hero    = iw.PossibleCharacter(name="Hero")
 ferryman = iw.NPC(name="The Ferryman", detail="A silent boatman.")
+harbourmaster = iw.NPC(name="The Harbourmaster", detail="Keeper of the tide tables.")
 ```
 
 ### `TrackedItemDataType`
@@ -341,6 +342,7 @@ What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedI
 
 | member | value in the JSON | what it does | example |
 |---|---|---|---|
+| `ADD` | `add` | Bring a new NPC into the world mid-game. The only action with nothing to match on, so `data["character"]` is `None`; the NPC in `data["npc"]` is the one being created. It carries no `positionInList` either — the engine appends it and assigns the position, where `MODIFY` and `DELETE` name an NPC that already has one. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": None, "action": iw.NPCAction.ADD, "npc": {"id": harbourmaster.id, "name": harbourmaster.name, "detail": harbourmaster.detail}})` |
 | `MODIFY` | `modify` | Replace the NPC with the one in `data["npc"]`, matched by `data["character"]`. The whole NPC is written, not the changed fields, so send it as it should end up. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})` |
 | `DELETE` | `delete` | Remove the NPC from the world. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.DELETE, "npc": {"id": ferryman.id, "name": ferryman.name}})` |
 
@@ -372,7 +374,7 @@ What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedI
 | `CHANGE_PC_NAME` | `effectChangePCName` | Renames the playing character. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_NAME, data="The Stranger")` |
 | `CHANGE_PC_DESCRIPTION` | `effectChangePCDescription` | Rewrites the playing character's description. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_DESCRIPTION, data="Scarred, quiet, unwilling to explain the coat.")` |
 | `CHANGE_PC_SKILL` | `effectChangePCSkill` | Raises (`increase=True`) or lowers a skill by `amount`, clamped at `minmax`. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_SKILL, data={"name": "Nerve", "amount": 1, "minmax": 5, "increase": True})` |
-| `CHANGE_OTHER_CHARACTERS` | `effectChangeOtherCharacters` | Rewrites or removes an NPC. `data` is `{character, action, npc}` — `character` names the one to act on, `action` is an `NPCAction`, and `npc` is the whole NPC as it should end up. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})` |
+| `CHANGE_OTHER_CHARACTERS` | `effectChangeOtherCharacters` | Adds, rewrites or removes an NPC. `data` is `{character, action, npc}` — `character` names the one to act on (`None` when adding, as there is nothing to match yet), `action` is an `NPCAction`, and `npc` is the whole NPC as it should end up. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})` |
 | `SET_TRACKED_ITEM_VALUE` | `effectSetTrackedItemValue` | Writes a tracked item. `data` is `{action, newValue, replaceWith, trackedItemID}`; the `action` decides how — see `TrackedItemAction`. | `set_tracked_item(mood, "uneasy")` |
 | `RUN_SCRIPT` | `effectRunScript` | Runs a `$`-script block. | `iw.TriggerEffect(type=iw.EffectType.RUN_SCRIPT, data="for each $m in $roster.party\n  $m.hp += 5")` |
 | `FIRE_RANDOM_TRIGGER` | `effectFireRandomTrigger` | Fires one of the listed triggers at random. | `iw.TriggerEffect(type=iw.EffectType.FIRE_RANDOM_TRIGGER, data=[ambush.id, storm.id])` |

@@ -460,7 +460,7 @@ world.defeatCondition = iw.VictoryDefeatCondition(
 
 We will also set up some helper triggers - when 180 days are reached, a boat arrives to pick up the player. We will also add an alternate defeat condition - when sanity reaches 0
 
-Note that my default, triggers can get a bit wordy - we have to repeat the tracked item id a couple times, and threre is a lot of boilerplate. There are more efficient ways of doing this, and we will explore the more efficient ways in the advanced tutorial.
+Note that by default, triggers can get a bit wordy - we have to repeat the tracked item id a couple times, and threre is a lot of boilerplate. There are more efficient ways of doing this, and we will explore the more efficient ways in the advanced tutorial.
 
 <syntaxhighlight lang="python">
 world.triggerEvents.append(iw.TriggerEvent(

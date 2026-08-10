@@ -177,7 +177,7 @@ VICTORY.plot_details = plot.PlotStageDetails(instruction_blocks={
 # As we add the plot, you will see some warnings here about how there is a plot stage not reachable by two characters.
 # This is fine for this example, but it may be useful for more complex worlds to ensure that everything is reachable.
 # %%
-plot.add_plot(
+plot.add_single_plot(
     world,
     [ENTRY, OUTER_KEEP, THRONE_ROOM, POWER_SOURCE, VICTORY],
     [TO_OUTER_KEEP, TO_THRONE_ROOM, TO_POWER_SOURCE, DEFEAT_TYRANT, DESTROY_POWER_SOURCE],
