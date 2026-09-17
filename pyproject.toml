@@ -15,3 +15,6 @@ dependencies = ["pyyaml"]
 
 [tool.setuptools]
 packages = ["iw"]
+
+[tool.setuptools.package-data]
+iw = ["py.typed"]
