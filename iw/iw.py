@@ -211,10 +211,13 @@ class TrackedItem:
         a `$`-script or a substitution refers to. (The raw `variableName` field may be None; this never is.)"""
         return self.variableName or self.name.replace(" ", "_").lower()
 
-    def as_substitution(self) -> str:
+    def as_substitution(self, brackets: bool = True) -> str:
         """This item's `variable_name` wrapped as a `<<...>>` substitution token -- the form used to
         reference it inside trigger and instruction text."""
-        return f"<<{self.variable_name}>>"
+        if brackets:
+            return f"<<{self.variable_name}>>"
+        else:
+            return self.variable_name
 
 
 @dataclass(eq=False)
