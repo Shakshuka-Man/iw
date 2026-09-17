@@ -13,3 +13,6 @@ dependencies = []
 
 [tool.setuptools]
 packages = ["iw"]
+
+[tool.setuptools.package-data]
+iw = ["py.typed"]
