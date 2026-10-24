@@ -174,6 +174,7 @@ Where an item's starting value comes from is a whole topic of its own — see
 | `data` | `Any` | `required` | The payload. Its shape depends on `type` — see the effect tables. |
 | `id` | `str` | `auto` | Its own id. |
 | `trackedItemID` | `Optional[str]` | `None` | The item written, repeated outside `data` — both copies must agree. |
+| `name` | `Optional[str]` | `None` |  |
 
 The engine fills in extra keys on some payloads that you do not have to write: `path`/`updateMode` on
 `PRESENT_CHOICE`, `path` on `REQUEST_INPUT`, and `alreadyFired` on a victory/defeat condition.
@@ -255,12 +256,12 @@ a parsed group's raw sub-dicts are built out on construction — and the owning 
 | `schemaVersion` | `Optional[float]` | `2.4` | The world-format version this world is written to. |
 | `skills` | `list[str]` | `[]` | The named skills characters have. |
 | `hideSkillSystem` | `bool` | `False` | Hides skills from the player entirely. |
-| `showPawScriptButtons` | `Optional[bool]` | `None` | Shows the PawScript (`$`-script) buttons. Omitted unless set, so the engine keeps its own default. |
+| `showPawScriptButtons` | `bool` | `False` | Shows the PawScript (`$`-script) buttons. Omitted unless set, so the engine keeps its own default. |
 | `possibleCharacters` | `list[PossibleCharacter]` | `[]` | The playable characters to choose between. |
 | `triggerEvents` | `list[TriggerEvent]` | `[]` | The event system: everything that fires in response to play. |
 | `victoryCondition` | `Optional[VictoryDefeatCondition]` | `None` | How the world is won. |
 | `defeatCondition` | `Optional[VictoryDefeatCondition]` | `None` | How the world is lost. |
-| `conditions` | `list[str]` | `[]` | The named events this world recognises. An `ON_EVENT` condition fires on one by carrying the same string in its `data`, so this is the vocabulary those conditions draw on rather than each of them inventing its own wording. |
+| `conditions` | `list[str]` | `[]` | The named events this world recognizes. An `ON_EVENT` condition fires on one by carrying the same string in its `data`, so this is the vocabulary those conditions draw on rather than each of them inventing its own wording. You need not fill it in: on export the library adds every `ON_EVENT` string the triggers use, in first-use order, after any you list yourself — and always writes it, even empty. |
 | `descriptionRequest` | `str` | `''` | Instructions for generating the world description. |
 | `summaryRequest` | `str` | `''` | Instructions for summarising the story so far. |
 | `charSelectText` | `Optional[str]` | `None` | Text shown on the character-selection screen. |
@@ -320,6 +321,7 @@ harbourmaster = iw.NPC(name="The Harbourmaster", detail="Keeper of the tide tabl
 |---|---|---|---|
 | `EVERYONE` | `everyone` | Shown to the player and given to the AI. | `iw.TrackedItem(name="Mood", visibility=iw.TrackedItemVisibility.EVERYONE)` |
 | `AI_ONLY` | `ai_only` | Given to the AI, never shown to the player. | `iw.TrackedItem(name="Suspicion", visibility=iw.TrackedItemVisibility.AI_ONLY)` |
+| `AI_ONLY_BORING` | `ai_only_boring` |  | `` |
 | `PLAYER_ONLY` | `player_only` | Shown to the player, withheld from the AI. | `iw.TrackedItem(name="Notes", visibility=iw.TrackedItemVisibility.PLAYER_ONLY)` |
 | `HIDDEN` | `hidden` | Hidden in normal play; visible in storyteller mode. | `iw.TrackedItem(name="Stage", visibility=iw.TrackedItemVisibility.HIDDEN)` |
 | `HIDDEN_BORING` | `hidden_boring` | Hidden in normal play; visible only in debug mode. | `iw.TrackedItem(name="Turn counter", visibility=iw.TrackedItemVisibility.HIDDEN_BORING)` |
