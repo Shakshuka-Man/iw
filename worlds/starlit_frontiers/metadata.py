@@ -172,7 +172,6 @@ def install_into(world: iw.World) -> None:
 
     world.nsfw = False
     world.enableAISpecificInstructionBlocks = False
-    world.schemaVersion = 2.2
     world.autoAdvanceVersion = True
     world.version = "3.24"
 

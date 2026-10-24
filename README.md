@@ -24,7 +24,7 @@ VICTORY = plot.PlotTransition(starting_stage=HUNT, ending_stage=SLAIN,
                               end_game=True, can_continue=False)
 SLAIN.plot_details = plot.PlotStageDetails(instruction_blocks={block: "The dark lord is dead."})
 
-plot.add_plot(world, [HUNT, SLAIN], [VICTORY])
+plot.add_single_plot(world, [HUNT, SLAIN], [VICTORY])
 ```
 
 ## Running this yourself

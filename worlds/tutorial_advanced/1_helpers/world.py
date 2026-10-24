@@ -67,6 +67,10 @@ old = iw.TriggerEffect(
         "newValue": "100",
         "replaceWith": "",
         "trackedItemID": SANITY.id,
+        "path": "",
+        "updateMode": "path",
+        "listExpression": "",
+        "targetExpression": "",
     },
 )
 

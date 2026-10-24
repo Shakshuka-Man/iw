@@ -72,6 +72,5 @@ def install_into(world: iw.World) -> None:
     world.allowChangeCharacterSkills = True
     world.allowChangeCharacterPortrait = False
 
-    world.schemaVersion = 2.2
     world.version = "1.00"
     world.autoAdvanceVersion = True

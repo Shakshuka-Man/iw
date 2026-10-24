@@ -44,6 +44,18 @@ A world is an <code>iw.World</code>. It holds content (characters, NPCs, instruc
 | <code>editing</code> || <code>bool</code> || <code>True</code> || Whether others may edit their own copy.
 |}
 
+=== <code>VideoPromptInstructions</code> ===
+
+{| class="wikitable"
+! attribute !! type !! default !! what it's for
+|-
+| <code>videoPlan</code> || <code>str</code> || <code>''</code> || Instructions for the video plan — a sentence or two on what the video should show.
+|-
+| <code>videoImagePosition</code> || <code>str</code> || <code>''</code> || Instructions for the image position — whether the illustration is the video's first frame (<code>start</code>) or last frame (<code>end</code>). Only used when the player lets the AI choose.
+|-
+| <code>videoPrompt</code> || <code>str</code> || <code>''</code> || Instructions for the video prompt itself — what is sent to the video AI. The AI is also told the video's duration (<code>videoDuration</code>).
+|}
+
 === <code>PortraitPromptDetails</code> ===
 
 {| class="wikitable"
@@ -134,7 +146,7 @@ One of these exists per character for each <code>CHARACTER</code>-mode tracked i
 | <code>initialValueChoicesScript</code> || <code>Optional[str]</code> || <code>None</code> || For <code>PLAYER</code> mode: a <code>$</code>-script yielding those options.
 |}
 
-<code>item.variable_name</code> is the item's handle — its <code>variableName</code> if one is set, otherwise the name lowercased with spaces → underscores. A '''renamed item keeps its original handle''', so it is this, not the visible <code>name</code>, that a <code>$</code>-script or a substitution refers to. <code>item.as_substitution()</code> wraps it as <code>&lt;&lt;…&gt;&gt;</code> for embedding in trigger and instruction text.
+<code>item.variable_name</code> is the item's handle — its <code>variableName</code> if one is set, otherwise the name lowercased with spaces → underscores. A '''renamed item keeps its original handle''', so it is this, not the visible <code>name</code>, that a <code>$</code>-script or a substitution refers to. <code>item.as_substitution()</code> wraps it as <code>&lt;&lt;$…&gt;&gt;</code> for embedding in trigger and instruction text. The bare <code>&lt;&lt;…&gt;&gt;</code> form without the <code>$</code> is obsolete: the engine still accepts it for backwards compatibility, but it will be deprecated.
 
 Where an item's starting value comes from is a whole topic of its own — see Initial values below.
 
@@ -175,7 +187,7 @@ Where an item's starting value comes from is a whole topic of its own — see In
 |-
 | <code>id</code> || <code>str</code> || <code>auto</code> || The id <code>MODIFY_INSTRUCTION_BLOCK</code> names it by.
 |-
-| <code>selectedAIProfiles</code> || <code>Optional[list[str]]</code> || <code>None</code> || Restricts the block to particular AI profiles — <code>smilodon</code>, <code>massivecat</code>, <code>caracal</code>, <code>smilodon-thinking</code>. Anything else is filtered out on import, and <code>World.enableAISpecificInstructionBlocks</code> must be on.
+| <code>selectedAIProfiles</code> || <code>Optional[list[str]]</code> || <code>None</code> || Restricts the block to particular AI profiles — <code>dolphin</code>, <code>puma</code>, <code>smilodon</code>, <code>lynx</code>, <code>massivecat</code>, <code>caracal</code>, <code>smilodon-thinking</code>. Anything else is filtered out on import, and <code>World.enableAISpecificInstructionBlocks</code> must be on.
 |}
 
 === <code>LoreBookEntry</code> ===
@@ -234,7 +246,7 @@ Where an item's starting value comes from is a whole topic of its own — see In
 | <code>trackedItemID</code> || <code>Optional[str]</code> || <code>None</code> || The item written, repeated outside <code>data</code> — both copies must agree.
 |}
 
-The engine fills in extra keys on some payloads that you do not have to write: <code>path</code>, <code>updateMode</code>, <code>listExpression</code> and <code>targetExpression</code> on <code>SET_TRACKED_ITEM_VALUE</code>, <code>path</code>/<code>updateMode</code> on <code>PRESENT_CHOICE</code> and <code>REQUEST_INPUT</code>, and <code>alreadyFired</code> on a victory/defeat condition.
+The engine fills in extra keys on some payloads that you do not have to write: <code>path</code>/<code>updateMode</code> on <code>PRESENT_CHOICE</code>, <code>path</code> on <code>REQUEST_INPUT</code>, and <code>alreadyFired</code> on a victory/defeat condition. <code>SET_TRACKED_ITEM_VALUE</code> carries four more — <code>path</code>, <code>updateMode</code>, <code>listExpression</code> and <code>targetExpression</code> — and <code>set_tracked_item</code> writes those for you.
 
 === <code>TriggerCondition</code> ===
 
@@ -345,6 +357,8 @@ Set either a <code>type</code> (a leaf condition) or <code>category="logic"</cod
 |-
 | <code>permissionsOnceShared</code> || <code>PermissionsOnceShared</code> || <code>PermissionsOnceShared()</code> || What other people may do with the world once it is shared.
 |-
+| <code>videoPromptInstructions</code> || <code>Optional[VideoPromptInstructions]</code> || <code>None</code> || Instructions for the engine's video generation. Omitted unless set, so the engine keeps its own defaults.
+|-
 | <code>allowChangeCharacterName</code> || <code>bool</code> || <code>True</code> || Lets the player rename their character.
 |-
 | <code>allowChangeCharacterDescription</code> || <code>bool</code> || <code>True</code> || Lets the player rewrite their character's description.
@@ -359,11 +373,13 @@ Set either a <code>type</code> (a leaf condition) or <code>category="logic"</cod
 |-
 | <code>evaluationRequest</code> || <code>str</code> || <code>''</code> || Instructions for how the AI should judge the player's turn.
 |-
-| <code>schemaVersion</code> || <code>Optional[float]</code> || <code>2.2</code> || The world-format version this world is written to.
+| <code>schemaVersion</code> || <code>Optional[float]</code> || <code>2.4</code> || The world-format version this world is written to.
 |-
 | <code>skills</code> || <code>list[str]</code> || <code>[]</code> || The named skills characters have.
 |-
 | <code>hideSkillSystem</code> || <code>bool</code> || <code>False</code> || Hides skills from the player entirely.
+|-
+| <code>showPawScriptButtons</code> || <code>Optional[bool]</code> || <code>None</code> || Shows the PawScript (<code>$</code>-script) buttons. Omitted unless set, so the engine keeps its own default.
 |-
 | <code>possibleCharacters</code> || <code>list[PossibleCharacter]</code> || <code>[]</code> || The playable characters to choose between.
 |-
@@ -475,11 +491,11 @@ Which mode an item is in decides ''where its starting value lives'' — see Init
 |-
 | <code>SET</code> || <code>set</code> || Overwrite the value. || <code>set_tracked_item(mood, "uneasy")</code>
 |-
-| <code>ADD</code> || <code>add</code> || Add to it. || <code>set_tracked_item(crew, "1", action=iw.TrackedItemAction.ADD)</code>
+| <code>ADD</code> || <code>add</code> || Add to it — on a text item, append to it. Nothing is inserted between the old text and the new, so include any line break yourself. || <code>set_tracked_item(crew, "1", action=iw.TrackedItemAction.ADD)</code>
 |-
-| <code>SUBTRACT</code> || <code>subtract</code> || Take away from it. || <code>set_tracked_item(crew, "1", action=iw.TrackedItemAction.SUBTRACT)</code>
+| <code>SUBTRACT</code> || <code>subtract</code> || Take away from it — on a text item, remove the text if present. || <code>set_tracked_item(crew, "1", action=iw.TrackedItemAction.SUBTRACT)</code>
 |-
-| <code>REPLACE</code> || <code>replace</code> || Find <code>newValue</code> and swap in <code>replaceWith</code> — here the value you pass is the needle, not the result. || <code>set_tracked_item(mood, "calm", action=iw.TrackedItemAction.REPLACE)</code>
+| <code>REPLACE</code> || <code>replace</code> || Find <code>newValue</code> and swap in <code>replaceWith</code> — here the value you pass is the needle, not the result. || <code>set_tracked_item(mood, "calm", action=iw.TrackedItemAction.REPLACE, replace_with="wary")</code>
 |}
 
 === <code>NPCAction</code> ===
@@ -508,6 +524,18 @@ What <code>CHANGE_OTHER_CHARACTERS</code> does to the NPC it names. Separate fro
 | <code>AT_MOST</code> || <code>at_most</code> || Less than or equal. || <code>tracked_item_is(crew, "2", inequality=iw.Inequality.AT_MOST)</code>
 |-
 | <code>NOT_EQUAL</code> || <code>not_equal</code> || Different. || <code>tracked_item_is(mood, "calm", inequality=iw.Inequality.NOT_EQUAL)</code>
+|}
+
+=== <code>TextComparison</code> ===
+
+How an <code>ON_TRACKED_ITEM</code> condition matches its required value. The engine writes one on every tracked-item condition, number items included.
+
+{| class="wikitable"
+! member !! value in the JSON !! what it does !! example
+|-
+| <code>CONTAINS</code> || <code>contains</code> || The value contains the required text. The default, and what a number item carries. || <code>tracked_item_is(mood, "calm")</code>
+|-
+| <code>DOES_NOT_CONTAIN</code> || <code>does_not_contain</code> || The value does not contain it. || <code>tracked_item_is(mood, "calm", text_comparison=iw.TextComparison.DOES_NOT_CONTAIN)</code>
 |}
 
 === <code>EffectType</code> ===
@@ -547,7 +575,7 @@ What <code>CHANGE_OTHER_CHARACTERS</code> does to the NPC it names. Separate fro
 |-
 | <code>CHANGE_OTHER_CHARACTERS</code> || <code>effectChangeOtherCharacters</code> || Adds, rewrites or removes an NPC. <code>data</code> is <code>{character, action, npc}</code> — <code>character</code> names the one to act on (<code>None</code> when adding, as there is nothing to match yet), <code>action</code> is an <code>NPCAction</code>, and <code>npc</code> is the whole NPC as it should end up. || <code>iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})</code>
 |-
-| <code>SET_TRACKED_ITEM_VALUE</code> || <code>effectSetTrackedItemValue</code> || Writes a tracked item. <code>data</code> is <code>{action, newValue, replaceWith, trackedItemID}</code>; the <code>action</code> decides how — see <code>TrackedItemAction</code>. || <code>set_tracked_item(mood, "uneasy")</code>
+| <code>SET_TRACKED_ITEM_VALUE</code> || <code>effectSetTrackedItemValue</code> || Writes a tracked item. <code>data</code> is <code>{action, newValue, replaceWith, trackedItemID, path, updateMode, listExpression, targetExpression}</code>; the <code>action</code> decides how — see <code>TrackedItemAction</code>. || <code>set_tracked_item(mood, "uneasy")</code>
 |-
 | <code>RUN_SCRIPT</code> || <code>effectRunScript</code> || Runs a <code>$</code>-script block. || <code>iw.TriggerEffect(type=iw.EffectType.RUN_SCRIPT, data="for each $m in $roster.party\n  $m.hp += 5")</code>
 |-
@@ -557,7 +585,7 @@ What <code>CHANGE_OTHER_CHARACTERS</code> does to the NPC it names. Separate fro
 |-
 | <code>ENDS_GAME</code> || <code>effectEndsGame</code> || Ends the game. <code>data</code> is the <code>can_continue</code> value — <code>False</code> is a hard ending. || <code>iw.TriggerEffect(type=iw.EffectType.ENDS_GAME, data=False)</code>
 |-
-| <code>MODIFY_TRACKED_ITEM_DETAILS</code> || <code>effectModifyTrackedItemDetails</code> || Changes an item's own name / description / visibility / update instructions. Each field you change needs its <code>override*</code> flag set alongside it. || <code>iw.TriggerEffect(type=iw.EffectType.MODIFY_TRACKED_ITEM_DETAILS, data={"trackedItemID": mood.id, "overrideName": True, "name": "Temper"})</code>
+| <code>MODIFY_TRACKED_ITEM_DETAILS</code> || <code>effectModifyTrackedItemDetails</code> || Changes an item's own name / description / visibility / update instructions / auto-update. Each field you change needs its <code>override*</code> flag set alongside it. || <code>iw.TriggerEffect(type=iw.EffectType.MODIFY_TRACKED_ITEM_DETAILS, data={"trackedItemID": mood.id, "overrideName": True, "name": "Temper"})</code>
 |-
 | <code>PRESENT_CHOICE</code> || <code>effectPresentChoice</code> || Offers the player a choice; the picked value(s) land in the target item. || <code>iw.TriggerEffect(type=iw.EffectType.PRESENT_CHOICE, data={"message": "Which way?", "choices": "Left\nRight", "selectionMode": "single", "valueDelimiter": "newline", "minSelections": 1, "maxSelections": 1, "targetTrackedItemId": mood.id})</code>
 |-
@@ -571,19 +599,19 @@ What <code>CHANGE_OTHER_CHARACTERS</code> does to the NPC it names. Separate fro
 {| class="wikitable"
 ! member !! value in the JSON !! what it does !! example
 |-
-| <code>ON_TURN</code> || <code>triggerOnTurn</code> || Fires on turn '''≥ N''', not exactly N. <code>data=1</code> is the "every turn" idiom. || <code>iw.TriggerCondition(type=iw.ConditionType.ON_TURN, category="condition", data=1)</code>
+| <code>ON_TURN</code> || <code>triggerOnTurn</code> || Fires on turn '''≥ N''', not exactly N. <code>data=1</code> is the "every turn" idiom. N comes back as an int from some triggers and a string from others — read both. || <code>iw.TriggerCondition(type=iw.ConditionType.ON_TURN, category="condition", data=1)</code>
 |-
 | <code>ON_EVENT</code> || <code>triggerOnEvent</code> || Fires when the AI judges the described situation to have happened. || <code>iw.TriggerCondition(type=iw.ConditionType.ON_EVENT, category="condition", data="the crew mutinies")</code>
 |-
 | <code>ON_CHARACTER</code> || <code>triggerOnCharacter</code> || Gates on who the player picked. || <code>iw.TriggerCondition(type=iw.ConditionType.ON_CHARACTER, category="condition", data=[hero.characterId])</code>
 |-
-| <code>ON_TRACKED_ITEM</code> || <code>triggerOnTrackedItem</code> || Reads a tracked item. <code>data</code> is <code>{inequality, requiredValue, trackedItemID, textComparison}</code>. <code>textComparison</code> is '''required''' (<code>"contains"</code> / <code>"does_not_contain"</code>) — a condition without it is dropped on import. Text items have ''no'' exact match, only contains. <code>tracked_item_is</code> fills it in for you. || <code>tracked_item_is(mood, "uneasy")</code>
+| <code>ON_TRACKED_ITEM</code> || <code>triggerOnTrackedItem</code> || Reads a tracked item. <code>data</code> is <code>{inequality, requiredValue, trackedItemID, textComparison}</code>. <code>textComparison</code> is '''required''' (<code>"contains"</code> / <code>"does_not_contain"</code>) — a condition without it is dropped on import. Text items have ''no'' exact match, only contains. <code>tracked_item_is</code> fills it in for you — <code>"contains"</code> unless you pass <code>text_comparison</code>. || <code>tracked_item_is(mood, "uneasy")</code>
 |-
 | <code>ON_RANDOM_CHANCE</code> || <code>triggerOnRandomChance</code> || Fires that percent of the time. The percentage is a '''string'''. || <code>iw.TriggerCondition(type=iw.ConditionType.ON_RANDOM_CHANCE, category="condition", data="37")</code>
 |-
 | <code>ON_PAW_SCRIPT</code> || <code>triggerOnPawScript</code> || Fires when a <code>$</code>-expression is true. || <code>iw.TriggerCondition(type=iw.ConditionType.ON_PAW_SCRIPT, category="condition", data="$roster.party.count()&gt;0")</code>
 |-
-| <code>PREREQS</code> || <code>triggerPrereqs</code> || Fires only once the listed triggers have. || <code>iw.TriggerCondition(type=iw.ConditionType.PREREQS, category="condition", data=[ambush.id])</code>
+| <code>PREREQS</code> || <code>triggerPrereqs</code> || Fires only once the listed triggers have. <code>data</code> is <code>{prereqs, firedThisTurn}</code>: the trigger ids, and a flag the engine exports as <code>false</code>. (Before schema 2.4 it was the bare list of ids.) || <code>iw.TriggerCondition(type=iw.ConditionType.PREREQS, category="condition", data={"prereqs": [ambush.id], "firedThisTurn": False})</code>
 |}
 
 Every leaf condition carries <code>category="condition"</code>; the helpers set it for you. A '''logic group''' is a condition with no <code>type</code> at all — <code>category="logic"</code> and an <code>operator</code> — whose <code>data</code> is a list of sub-conditions. It nests arbitrarily, and its <code>TriggerEvent</code> needs <code>advancedLogic=True</code>:
@@ -647,7 +675,7 @@ The engine has a <code>$</code>-expression scripting language and structured (YA
 
 Objects that need an id get one from a shared, deterministic <code>IDGenerator</code>, and '''nothing in this repo ever writes one by hand'''. <code>World.from_dict</code> re-seeds it from the parsed data so ids created afterwards cannot collide with the parsed world's. <code>iw.reset_ids()</code> makes a build reproducible regardless of what was built before it (the build script calls it).
 
-<code>set_tracked_item(item, value, action=SET)</code> and <code>tracked_item_is(item, value, inequality=IS_EXACTLY)</code> build the effect that writes a tracked item and the condition that reads one. '''Use them.''' The engine's payload for both carries the item's id ''twice'' — inside <code>data</code>, and again in the sibling <code>trackedItemID</code> field — and nothing checks that the two copies agree; a world whose copies disagree loads perfectly and silently never fires. Both take the item itself, or a raw id string for engine built-ins like <code>turn_number</code> and <code>player_action</code> that are not items in your world. Those two are listed in <code>iw.BUILTIN_TRACKED_ITEM_IDS</code>, which is what stops <code>validate()</code> rejecting a trigger that reads one; add to it if you meet another the engine supplies.
+<code>set_tracked_item(item, value, action=SET, replace_with="")</code> and <code>tracked_item_is(item, value, inequality=IS_EXACTLY, text_comparison=CONTAINS)</code> build the effect that writes a tracked item and the condition that reads one. '''Use them.''' The engine's payload for both carries the item's id ''twice'' — inside <code>data</code>, and again in the sibling <code>trackedItemID</code> field — and nothing checks that the two copies agree; a world whose copies disagree loads perfectly and silently never fires. Both take the item itself, or a raw id string for engine built-ins like <code>turn_number</code> and <code>player_action</code> that are not items in your world. Those two are listed in <code>iw.BUILTIN_TRACKED_ITEM_IDS</code>, which is what stops <code>validate()</code> rejecting a trigger that reads one; add to it if you meet another the engine supplies.
 
 '''Every skill is a tracked item too.''' The engine makes one per entry in <code>skills</code>, named <code>skill_</code> plus the skill's own name lowercased with spaces underscored — a world with <code>skills=["Skill A", "Skill B"]</code> can read <code>skill_skill_a</code> and <code>skill_skill_b</code>. They never appear in <code>trackedItems</code>, so <code>validate()</code> derives them from <code>skills</code> rather than being told about them; a skill you rename renames its item.
 

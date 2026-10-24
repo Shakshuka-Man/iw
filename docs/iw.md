@@ -45,6 +45,14 @@ JSON; or parse engine JSON back with `World.from_json()`.
 | `sharing` | `bool` | `True` | Whether others may share it on. |
 | `editing` | `bool` | `True` | Whether others may edit their own copy. |
 
+### `VideoPromptInstructions`
+
+| attribute | type | default | what it's for |
+|---|---|---|---|
+| `videoPlan` | `str` | `''` | Instructions for the video plan — a sentence or two on what the video should show. |
+| `videoImagePosition` | `str` | `''` | Instructions for the image position — whether the illustration is the video's first frame (`start`) or last frame (`end`). Only used when the player lets the AI choose. |
+| `videoPrompt` | `str` | `''` | Instructions for the video prompt itself — what is sent to the video AI. The AI is also told the video's duration (`videoDuration`). |
+
 ### `PortraitPromptDetails`
 
 | attribute | type | default | what it's for |
@@ -103,7 +111,8 @@ overrides you attach at will. See [Initial values](#initial-values-same--charact
 `item.variable_name` is the item's handle — its `variableName` if one is set, otherwise the name
 lowercased with spaces → underscores. A **renamed item keeps its original handle**, so it is this, not the
 visible `name`, that a `$`-script or a substitution refers to. `item.as_substitution()` wraps it as
-`<<…>>` for embedding in trigger and instruction text.
+`<<$…>>` for embedding in trigger and instruction text. The bare `<<…>>` form without the `$` is obsolete:
+the engine still accepts it for backwards compatibility, but it will be deprecated.
 
 Where an item's starting value comes from is a whole topic of its own — see
 [Initial values](#initial-values-same--character--player) below.
@@ -130,7 +139,7 @@ Where an item's starting value comes from is a whole topic of its own — see
 | `name` | `str` | `required` | What the block is called. |
 | `content` | `str` | `''` | The instructions themselves. |
 | `id` | `str` | `auto` | The id `MODIFY_INSTRUCTION_BLOCK` names it by. |
-| `selectedAIProfiles` | `Optional[list[str]]` | `None` | Restricts the block to particular AI profiles — `smilodon`, `massivecat`, `caracal`, `smilodon-thinking`. Anything else is filtered out on import, and `World.enableAISpecificInstructionBlocks` must be on. |
+| `selectedAIProfiles` | `Optional[list[str]]` | `None` | Restricts the block to particular AI profiles — `dolphin`, `puma`, `smilodon`, `lynx`, `massivecat`, `caracal`, `smilodon-thinking`. Anything else is filtered out on import, and `World.enableAISpecificInstructionBlocks` must be on. |
 
 ### `LoreBookEntry`
 
@@ -166,9 +175,10 @@ Where an item's starting value comes from is a whole topic of its own — see
 | `id` | `str` | `auto` | Its own id. |
 | `trackedItemID` | `Optional[str]` | `None` | The item written, repeated outside `data` — both copies must agree. |
 
-The engine fills in extra keys on some payloads that you do not have to write: `path`, `updateMode`,
-`listExpression` and `targetExpression` on `SET_TRACKED_ITEM_VALUE`, `path`/`updateMode` on
-`PRESENT_CHOICE` and `REQUEST_INPUT`, and `alreadyFired` on a victory/defeat condition.
+The engine fills in extra keys on some payloads that you do not have to write: `path`/`updateMode` on
+`PRESENT_CHOICE`, `path` on `REQUEST_INPUT`, and `alreadyFired` on a victory/defeat condition.
+`SET_TRACKED_ITEM_VALUE` carries four more — `path`, `updateMode`, `listExpression` and
+`targetExpression` — and `set_tracked_item` writes those for you.
 
 ### `TriggerCondition`
 
@@ -234,6 +244,7 @@ a parsed group's raw sub-dicts are built out on construction — and the owning 
 | `currentPreviewImageIndex` | `int` | `-1` | Which candidate is in use; `-1` means none chosen. |
 | `imagePromptDetails` | `ImagePromptDetails` | `ImagePromptDetails()` | The structured prompt the cover art was generated from. |
 | `permissionsOnceShared` | `PermissionsOnceShared` | `PermissionsOnceShared()` | What other people may do with the world once it is shared. |
+| `videoPromptInstructions` | `Optional[VideoPromptInstructions]` | `None` | Instructions for the engine's video generation. Omitted unless set, so the engine keeps its own defaults. |
 | `allowChangeCharacterName` | `bool` | `True` | Lets the player rename their character. |
 | `allowChangeCharacterDescription` | `bool` | `True` | Lets the player rewrite their character's description. |
 | `allowChangeCharacterSkills` | `bool` | `False` | Lets the player adjust starting skills. |
@@ -241,9 +252,10 @@ a parsed group's raw sub-dicts are built out on construction — and the owning 
 | `allowChangeCharacterPortrait` | `bool` | `True` | Lets the player pick a different supplied portrait. |
 | `allowChangeCharacterNewPortrait` | `bool` | `True` | Lets the player generate a fresh portrait. |
 | `evaluationRequest` | `str` | `''` | Instructions for how the AI should judge the player's turn. |
-| `schemaVersion` | `Optional[float]` | `2.2` | The world-format version this world is written to. |
+| `schemaVersion` | `Optional[float]` | `2.4` | The world-format version this world is written to. |
 | `skills` | `list[str]` | `[]` | The named skills characters have. |
 | `hideSkillSystem` | `bool` | `False` | Hides skills from the player entirely. |
+| `showPawScriptButtons` | `Optional[bool]` | `None` | Shows the PawScript (`$`-script) buttons. Omitted unless set, so the engine keeps its own default. |
 | `possibleCharacters` | `list[PossibleCharacter]` | `[]` | The playable characters to choose between. |
 | `triggerEvents` | `list[TriggerEvent]` | `[]` | The event system: everything that fires in response to play. |
 | `victoryCondition` | `Optional[VictoryDefeatCondition]` | `None` | How the world is won. |
@@ -332,9 +344,9 @@ Which mode an item is in decides *where its starting value lives* — see
 | member | value in the JSON | what it does | example |
 |---|---|---|---|
 | `SET` | `set` | Overwrite the value. | `set_tracked_item(mood, "uneasy")` |
-| `ADD` | `add` | Add to it. | `set_tracked_item(crew, "1", action=iw.TrackedItemAction.ADD)` |
-| `SUBTRACT` | `subtract` | Take away from it. | `set_tracked_item(crew, "1", action=iw.TrackedItemAction.SUBTRACT)` |
-| `REPLACE` | `replace` | Find `newValue` and swap in `replaceWith` — here the value you pass is the needle, not the result. | `set_tracked_item(mood, "calm", action=iw.TrackedItemAction.REPLACE)` |
+| `ADD` | `add` | Add to it — on a text item, append to it. Nothing is inserted between the old text and the new, so include any line break yourself. | `set_tracked_item(crew, "1", action=iw.TrackedItemAction.ADD)` |
+| `SUBTRACT` | `subtract` | Take away from it — on a text item, remove the text if present. | `set_tracked_item(crew, "1", action=iw.TrackedItemAction.SUBTRACT)` |
+| `REPLACE` | `replace` | Find `newValue` and swap in `replaceWith` — here the value you pass is the needle, not the result. | `set_tracked_item(mood, "calm", action=iw.TrackedItemAction.REPLACE, replace_with="wary")` |
 
 ### `NPCAction`
 
@@ -354,6 +366,15 @@ What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedI
 | `AT_LEAST` | `at_least` | Greater than or equal. | `tracked_item_is(crew, "2", inequality=iw.Inequality.AT_LEAST)` |
 | `AT_MOST` | `at_most` | Less than or equal. | `tracked_item_is(crew, "2", inequality=iw.Inequality.AT_MOST)` |
 | `NOT_EQUAL` | `not_equal` | Different. | `tracked_item_is(mood, "calm", inequality=iw.Inequality.NOT_EQUAL)` |
+
+### `TextComparison`
+
+How an `ON_TRACKED_ITEM` condition matches its required value. The engine writes one on every tracked-item condition, number items included.
+
+| member | value in the JSON | what it does | example |
+|---|---|---|---|
+| `CONTAINS` | `contains` | The value contains the required text. The default, and what a number item carries. | `tracked_item_is(mood, "calm")` |
+| `DOES_NOT_CONTAIN` | `does_not_contain` | The value does not contain it. | `tracked_item_is(mood, "calm", text_comparison=iw.TextComparison.DOES_NOT_CONTAIN)` |
 
 ### `EffectType`
 
@@ -375,12 +396,12 @@ What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedI
 | `CHANGE_PC_DESCRIPTION` | `effectChangePCDescription` | Rewrites the playing character's description. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_DESCRIPTION, data="Scarred, quiet, unwilling to explain the coat.")` |
 | `CHANGE_PC_SKILL` | `effectChangePCSkill` | Raises (`increase=True`) or lowers a skill by `amount`, clamped at `minmax`. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_PC_SKILL, data={"name": "Nerve", "amount": 1, "minmax": 5, "increase": True})` |
 | `CHANGE_OTHER_CHARACTERS` | `effectChangeOtherCharacters` | Adds, rewrites or removes an NPC. `data` is `{character, action, npc}` — `character` names the one to act on (`None` when adding, as there is nothing to match yet), `action` is an `NPCAction`, and `npc` is the whole NPC as it should end up. | `iw.TriggerEffect(type=iw.EffectType.CHANGE_OTHER_CHARACTERS, data={"character": ferryman.name, "action": iw.NPCAction.MODIFY, "npc": {"id": ferryman.id, "name": ferryman.name, "detail": "He speaks now."}})` |
-| `SET_TRACKED_ITEM_VALUE` | `effectSetTrackedItemValue` | Writes a tracked item. `data` is `{action, newValue, replaceWith, trackedItemID}`; the `action` decides how — see `TrackedItemAction`. | `set_tracked_item(mood, "uneasy")` |
+| `SET_TRACKED_ITEM_VALUE` | `effectSetTrackedItemValue` | Writes a tracked item. `data` is `{action, newValue, replaceWith, trackedItemID, path, updateMode, listExpression, targetExpression}`; the `action` decides how — see `TrackedItemAction`. | `set_tracked_item(mood, "uneasy")` |
 | `RUN_SCRIPT` | `effectRunScript` | Runs a `$`-script block. | `iw.TriggerEffect(type=iw.EffectType.RUN_SCRIPT, data="for each $m in $roster.party\n  $m.hp += 5")` |
 | `FIRE_RANDOM_TRIGGER` | `effectFireRandomTrigger` | Fires one of the listed triggers at random. | `iw.TriggerEffect(type=iw.EffectType.FIRE_RANDOM_TRIGGER, data=[ambush.id, storm.id])` |
 | `MODIFY_KEYWORD_BLOCK` | `effectModifyKeywordBlock` | The same for a lorebook entry, and rewrites its keywords too. | `iw.TriggerEffect(type=iw.EffectType.MODIFY_KEYWORD_BLOCK, data={"id": dragons.id, "content": "They are awake now.", "keywords": ["dragon", "wyrm"]})` |
 | `ENDS_GAME` | `effectEndsGame` | Ends the game. `data` is the `can_continue` value — `False` is a hard ending. | `iw.TriggerEffect(type=iw.EffectType.ENDS_GAME, data=False)` |
-| `MODIFY_TRACKED_ITEM_DETAILS` | `effectModifyTrackedItemDetails` | Changes an item's own name / description / visibility / update instructions. Each field you change needs its `override*` flag set alongside it. | `iw.TriggerEffect(type=iw.EffectType.MODIFY_TRACKED_ITEM_DETAILS, data={"trackedItemID": mood.id, "overrideName": True, "name": "Temper"})` |
+| `MODIFY_TRACKED_ITEM_DETAILS` | `effectModifyTrackedItemDetails` | Changes an item's own name / description / visibility / update instructions / auto-update. Each field you change needs its `override*` flag set alongside it. | `iw.TriggerEffect(type=iw.EffectType.MODIFY_TRACKED_ITEM_DETAILS, data={"trackedItemID": mood.id, "overrideName": True, "name": "Temper"})` |
 | `PRESENT_CHOICE` | `effectPresentChoice` | Offers the player a choice; the picked value(s) land in the target item. | `iw.TriggerEffect(type=iw.EffectType.PRESENT_CHOICE, data={"message": "Which way?", "choices": "Left\nRight", "selectionMode": "single", "valueDelimiter": "newline", "minSelections": 1, "maxSelections": 1, "targetTrackedItemId": mood.id})` |
 | `REQUEST_INPUT` | `effectRequestInput` | Prompts the player for text; the reply lands in the target item. | `iw.TriggerEffect(type=iw.EffectType.REQUEST_INPUT, data={"inputMode": "single", "requestText": "Name yourself.", "requiresInput": True, "targetTrackedItemId": mood.id})` |
 
@@ -390,13 +411,13 @@ What `CHANGE_OTHER_CHARACTERS` does to the NPC it names. Separate from `TrackedI
 
 | member | value in the JSON | what it does | example |
 |---|---|---|---|
-| `ON_TURN` | `triggerOnTurn` | Fires on turn **≥ N**, not exactly N. `data=1` is the "every turn" idiom. | `iw.TriggerCondition(type=iw.ConditionType.ON_TURN, category="condition", data=1)` |
+| `ON_TURN` | `triggerOnTurn` | Fires on turn **≥ N**, not exactly N. `data=1` is the "every turn" idiom. N comes back as an int from some triggers and a string from others — read both. | `iw.TriggerCondition(type=iw.ConditionType.ON_TURN, category="condition", data=1)` |
 | `ON_EVENT` | `triggerOnEvent` | Fires when the AI judges the described situation to have happened. | `iw.TriggerCondition(type=iw.ConditionType.ON_EVENT, category="condition", data="the crew mutinies")` |
 | `ON_CHARACTER` | `triggerOnCharacter` | Gates on who the player picked. | `iw.TriggerCondition(type=iw.ConditionType.ON_CHARACTER, category="condition", data=[hero.characterId])` |
-| `ON_TRACKED_ITEM` | `triggerOnTrackedItem` | Reads a tracked item. `data` is `{inequality, requiredValue, trackedItemID, textComparison}`. `textComparison` is **required** (`"contains"` / `"does_not_contain"`) — a condition without it is dropped on import. Text items have *no* exact match, only contains. `tracked_item_is` fills it in for you. | `tracked_item_is(mood, "uneasy")` |
+| `ON_TRACKED_ITEM` | `triggerOnTrackedItem` | Reads a tracked item. `data` is `{inequality, requiredValue, trackedItemID, textComparison}`. `textComparison` is **required** (`"contains"` / `"does_not_contain"`) — a condition without it is dropped on import. Text items have *no* exact match, only contains. `tracked_item_is` fills it in for you — `"contains"` unless you pass `text_comparison`. | `tracked_item_is(mood, "uneasy")` |
 | `ON_RANDOM_CHANCE` | `triggerOnRandomChance` | Fires that percent of the time. The percentage is a **string**. | `iw.TriggerCondition(type=iw.ConditionType.ON_RANDOM_CHANCE, category="condition", data="37")` |
 | `ON_PAW_SCRIPT` | `triggerOnPawScript` | Fires when a `$`-expression is true. | `iw.TriggerCondition(type=iw.ConditionType.ON_PAW_SCRIPT, category="condition", data="$roster.party.count()>0")` |
-| `PREREQS` | `triggerPrereqs` | Fires only once the listed triggers have. | `iw.TriggerCondition(type=iw.ConditionType.PREREQS, category="condition", data=[ambush.id])` |
+| `PREREQS` | `triggerPrereqs` | Fires only once the listed triggers have. `data` is `{prereqs, firedThisTurn}`: the trigger ids, and a flag the engine exports as `false`. (Before schema 2.4 it was the bare list of ids.) | `iw.TriggerCondition(type=iw.ConditionType.PREREQS, category="condition", data={"prereqs": [ambush.id], "firedThisTurn": False})` |
 
 Every leaf condition carries `category="condition"`; the helpers set it for you. A **logic group** is a
 condition with no `type` at all — `category="logic"` and an `operator` — whose `data` is a list of
@@ -464,8 +485,8 @@ ever writes one by hand**. `World.from_dict` re-seeds it from the parsed data so
 cannot collide with the parsed world's. `iw.reset_ids()` makes a build reproducible regardless of what was
 built before it (the build script calls it).
 
-`set_tracked_item(item, value, action=SET)` and `tracked_item_is(item, value, inequality=IS_EXACTLY)`
-build the effect that writes a tracked item and the condition that reads one. **Use them.** The engine's
+`set_tracked_item(item, value, action=SET, replace_with="")` and
+`tracked_item_is(item, value, inequality=IS_EXACTLY, text_comparison=CONTAINS)` build the effect that writes a tracked item and the condition that reads one. **Use them.** The engine's
 payload for both carries the item's id *twice* — inside `data`, and again in the sibling `trackedItemID`
 field — and nothing checks that the two copies agree; a world whose copies disagree loads perfectly and
 silently never fires. Both take the item itself, or a raw id string for engine built-ins like

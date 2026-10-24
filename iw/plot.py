@@ -44,9 +44,10 @@ class PlotStage:
     construction, which is what lets you declare a stage, wire the transition that reaches it, and only
     then write the content you arrive at -- the order the plot actually reads in.
 
-    `description` is for you, not for the engine: it is never emitted, and nothing reads it but the
-    warnings and errors below. A complaint about "stage '3'" tells you nothing when you have thirty of
-    them; one about "stage '3' (the secret passage)" tells you where to look."""
+    `description` is for you, not for the engine: nothing reads it but the warnings and errors below,
+    and the debug-only `<name> Stage Details` item that lists every stage. A complaint about "stage '3'"
+    tells you nothing when you have thirty of them; one about "stage '3' (the secret passage)" tells you
+    where to look."""
     plot_details: PlotStageDetails | None = None
     character_specific_plot_details: list[PlotStageDetails] = field(default_factory=list)
     internal_id: str | None = None
@@ -123,8 +124,8 @@ def _stage_label(stage: PlotStage) -> str:
 class PlotlineHandler:
     """Builds the tracked items and trigger events that implement one or more plotlines on top of the
     raw `iw` trigger machinery. Construct with a world and a list of Plotlines, then call `run()` to
-    get a new World with everything added. Neither the input world nor the given plotlines are
-    modified -- both are deep-copied first.
+    add everything to that world, in place. The given plotlines are deep-copied first, so they are
+    never modified -- the world is.
 
     With `shared_gate=False` (default) each plotline gets its own per-turn change gate, so plotlines
     advance independently and several may advance in the same turn. With `shared_gate=True` a single
@@ -158,9 +159,18 @@ class PlotlineHandler:
                 initialValue="1",
             )
 
+        # Debugging only: the situations the engine judged to have happened this turn, across every
+        # plotline. The first reset trigger of each turn restarts it; one trigger per slot appends to it.
+        self.situation_encounters_tracker = iw.TrackedItem(
+            name="Plot engine situation encounters",
+            dataType=iw.TrackedItemDataType.TEXT,
+            visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
+        )
+
         # Per-plotline derived state, keyed by id(plotline). The trackers themselves are resolved in
         # place on each Plotline (see _setup_plotline); these dicts hold the rest.
         self._slots: dict[int, list[iw.TrackedItem]] = {}          # situation-slot pool
+        self._stage_details: dict[int, iw.TrackedItem] = {}        # every stage's id and description
         self._situations: dict[int, dict[int, list[str]]] = {}     # id(stage) -> ordered situations
         self._initial: dict[int, PlotStage] = {}                   # id(plotline) -> its initial stage
         self.stage_owner: dict[int, Plotline] = {}                 # id(stage) -> owning plotline
@@ -271,6 +281,15 @@ class PlotlineHandler:
 
         self._assign_internal_ids(stages, transitions)
         self._situations[id(plotline)], self._slots[id(plotline)] = self._compute_situation_slots(plotline)
+
+        # A debugging key for reading the stage tracker: each stage's internal id beside its description.
+        # Nothing ever updates it -- it holds this fixed value for the whole game.
+        self._stage_details[id(plotline)] = iw.TrackedItem(
+            name=f"{plotline.name} Stage Details",
+            dataType=iw.TrackedItemDataType.TEXT,
+            visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
+            initialValue="\n".join(_stage_label(stage) for stage in stages),
+        )
 
     def _validate_transitions(self, plotline: Plotline):
         """A transition must have at least one starting stage, and may only reference stages of its own
@@ -456,9 +475,9 @@ class PlotlineHandler:
         A state is one current stage per plotline in the cluster -- the product, because a `requires`
         gate reads where the *other* plotlines stand, so a transition's availability is a property of the
         whole cluster, not of one plotline. Nothing ever forces a plotline to advance: it sits at its
-        stage until one of its own transitions fires. That is what makes this a plain BFS over reachable
-        tuples, and what lets a character hold one plotline still while advancing another to line up a
-        synergy gate.
+        stage until one of its own transitions fires. That is what makes this a plain depth-first search
+        over reachable tuples, and what lets a character hold one plotline still while advancing another
+        to line up a synergy gate.
 
         A transition that ends the game for good (`end_game` with `can_continue` False) is recorded as
         firing, but its resulting state is never expanded -- nothing can advance after it."""
@@ -716,17 +735,49 @@ class PlotlineHandler:
                 ))
         return conditions
 
-    def _build_reset_trigger(self, change_tracker: iw.TrackedItem, name: str) -> iw.TriggerEvent:
+    def _build_reset_trigger(self, change_tracker: iw.TrackedItem, name: str,
+                             starts_turn: bool) -> iw.TriggerEvent:
         """Open a per-turn gate (set its change tracker to 0) every turn, before any other plot
         trigger. A non-start-of-game trigger needs at least one condition to fire, so we gate it on a
-        trivially-true one: the built-in `turn_number` is always >= 1."""
+        trivially-true one: the built-in `turn_number` is always >= 1.
+
+        The reset that `starts_turn` -- the first plot trigger of the turn -- also restarts the
+        situation-encounter log. Only that one does: a later plotline's reset would wipe what the
+        plotlines before it had already logged."""
+        effects = [tools.set_tracked_item(change_tracker, "0")]
+        if starts_turn:
+            effects.append(tools.set_tracked_item(self.situation_encounters_tracker,
+                                                  "Situations encountered this turn:"))
         # `turn_number` is an engine built-in, so it is named by a raw id rather than a TrackedItem.
         return iw.TriggerEvent(
             name=f"{name}: reset per-turn change gate",
             canTriggerMoreThanOnce=True,
             triggerConditions=[tools.tracked_item_is("turn_number", "1", iw.Inequality.AT_LEAST)],
-            triggerEffects=[tools.set_tracked_item(change_tracker, "0")],
+            triggerEffects=effects,
         )
+
+    def _build_encounter_triggers(self, plotline: Plotline) -> list[iw.TriggerEvent]:
+        """One debugging trigger per situation slot: whenever the slot's situation happens, append the
+        slot's number and its current text to the situation-encounter log. Emitted before the stage
+        triggers, which rewrite the slots on the turn a transition fires -- after them, the log would
+        show the next stage's situations rather than the one just encountered."""
+        return [
+            iw.TriggerEvent(
+                name=f"{plotline.name} Situation {index + 1}: log encounter",
+                canTriggerMoreThanOnce=True,
+                triggerConditions=[iw.TriggerCondition(
+                    type=iw.ConditionType.ON_EVENT,
+                    category="condition",
+                    data=slot.as_substitution(),
+                )],
+                triggerEffects=[tools.set_tracked_item(
+                    self.situation_encounters_tracker,
+                    f"\n{index + 1}: {slot.as_substitution()}",
+                    iw.TrackedItemAction.ADD,
+                )],
+            )
+            for index, slot in enumerate(self._slots[id(plotline)])
+        ]
 
     def _build_start_triggers(self, plotline: Plotline, stage: PlotStage) -> list[iw.TriggerEvent]:
         """Set the stage tracker and apply the opening stage's content, before the first turn and on any
@@ -900,27 +951,36 @@ class PlotlineHandler:
         """Add every plotline's tracked items and triggers to the input world, in place.
 
         Within a plotline, triggers are evaluated top-to-bottom, once per turn, so order is
-        load-bearing: reset (opens the gate) -> start/transitions (advance) -> stage triggers (apply
-        content). Plotlines are emitted in order; with a shared gate there is one reset up front."""
-        # Add the trackers, unless an item with the same id is already present.
-        trackers = []
+        load-bearing: reset (opens the gate) -> situation logging -> start/transitions (advance) ->
+        stage triggers (apply content). Plotlines are emitted in order; with a shared gate there is one
+        reset up front."""
+        # Add the trackers. One already in the world (a tracker you supplied and added yourself) is the
+        # item the engine reads, so it takes the initial value resolved onto our copy -- for a stage
+        # tracker, the opening stage (see __init__). Left as it was, the plot would start nowhere.
+        trackers = [self.situation_encounters_tracker]
         if self.shared_gate:
             trackers.append(self.shared_change_tracker)
         for plotline in self.plotlines:
             trackers.append(plotline.plot_stage_tracker)
+            trackers.append(self._stage_details[id(plotline)])
             if not self.shared_gate:
                 trackers.append(plotline.plot_change_tracker)
             trackers.extend(self._slots[id(plotline)])
         for tracker in trackers:
-            if not any(item.id == tracker.id for item in self.world.trackedItems):
+            existing = next((item for item in self.world.trackedItems if item.id == tracker.id), None)
+            if existing is None:
                 self.world.trackedItems.append(tracker)
+            else:
+                existing.initialValue = tracker.initialValue
 
         triggers = []
         if self.shared_gate:
-            triggers.append(self._build_reset_trigger(self.shared_change_tracker, "Plot"))
+            triggers.append(self._build_reset_trigger(self.shared_change_tracker, "Plot", starts_turn=True))
         for plotline in self.plotlines:
             if not self.shared_gate:
-                triggers.append(self._build_reset_trigger(plotline.plot_change_tracker, plotline.name))
+                triggers.append(self._build_reset_trigger(plotline.plot_change_tracker, plotline.name,
+                                                          starts_turn=plotline is self.plotlines[0]))
+            triggers.extend(self._build_encounter_triggers(plotline))
             triggers.extend(self._build_start_triggers(plotline, self._initial[id(plotline)]))
             for transition in plotline.plot_transitions:
                 triggers.append(self._build_transition_trigger(plotline, transition))
