@@ -38,9 +38,9 @@ for the compiler.
 Each plotline gets, namespaced by its `name`:
 
 - a hidden **stage tracker** (`<name> Stage`) holding the id of the current stage;
-- a **stage details** item (`<name> Stage Details`) listing every stage's id beside its `description` — a
-  key for reading the stage tracker. It is `HIDDEN_BORING`, so it only shows in debug mode, and nothing
-  ever updates it;
+- a hidden **stage details** item (`<name> Stage Details`) listing every stage's id beside its `description` — a
+  key for reading the stage tracker.
+- a hidden **plot engine situation encounters** item of which situations have triggered each turn.
 - a hidden per-turn **change gate** (`<name> Change`) so the plot advances at most once per turn;
 - a pool of hidden **situation slots** (`<name> Situation N`). The current stage's outgoing scenarios are
   written into these slots, and transitions reference them via `<<$…>>` — so the engine only ever
@@ -302,7 +302,7 @@ Nothing in it is checked.
 
 ## Notes
 
-- **Your plot objects are not mutated; the world is.** `add_single_plot(s)` deep-copies the plotlines, so
+- **Your plot objects are not mutated but the world is.** `add_single_plot(s)` deep-copies the plotlines, so
   your `PlotStage` / `PlotTransition` / `Plotline` objects are unchanged and safe to reuse across builds.
   The world you pass is changed in place: the compiled tracked items and triggers are added to it.
 - The trigger-ordering and "fires every turn" behaviours rely on the game engine's evaluation semantics;
