@@ -146,9 +146,12 @@ FIELDS = {
         "triggerEvents": "The event system: everything that fires in response to play.",
         "victoryCondition": "How the world is won.",
         "defeatCondition": "How the world is lost.",
-        "conditions": "The named events this world recognises. An `ON_EVENT` condition fires on one by "
+        "conditions": "The named events this world recognizes. An `ON_EVENT` condition fires on one by "
                       "carrying the same string in its `data`, so this is the vocabulary those "
-                      "conditions draw on rather than each of them inventing its own wording.",
+                      "conditions draw on rather than each of them inventing its own wording. You need "
+                      "not fill it in: on export the library adds every `ON_EVENT` string the triggers "
+                      "use, in first-use order, after any you list yourself — and always writes it, "
+                      "even empty.",
         "descriptionRequest": "Instructions for generating the world description.",
         "summaryRequest": "Instructions for summarising the story so far.",
         "charSelectText": "Text shown on the character-selection screen.",

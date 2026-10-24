@@ -45,9 +45,9 @@ class PlotStage:
     then write the content you arrive at -- the order the plot actually reads in.
 
     `description` is for you, not for the engine: nothing reads it but the warnings and errors below,
-    and the debug-only `<name> Stage Details` item that lists every stage. A complaint about "stage '3'"
-    tells you nothing when you have thirty of them; one about "stage '3' (the secret passage)" tells you
-    where to look."""
+    and the debug-only `<name> Stage Details` item that lists every stage and transition. A complaint
+    about "stage '3'" tells you nothing when you have thirty of them; one about "stage '3' (the secret
+    passage)" tells you where to look."""
     plot_details: PlotStageDetails | None = None
     character_specific_plot_details: list[PlotStageDetails] = field(default_factory=list)
     internal_id: str | None = None
@@ -188,6 +188,9 @@ class PlotlineHandler:
         # stages), so it runs over all of them at once.
         for plotline in self.plotlines:
             self._validate_transitions(plotline)
+            # Built only now: its transition lines look up each starting stage's slots, which needs the
+            # transitions known to start in this plotline.
+            self._stage_details[id(plotline)] = self._build_stage_details(plotline)
             initial = self._find_initial_stage(plotline)
             self._initial[id(plotline)] = initial
             # The tracker starts at the opening stage, rather than at a sentinel the start-of-game
@@ -281,15 +284,6 @@ class PlotlineHandler:
 
         self._assign_internal_ids(stages, transitions)
         self._situations[id(plotline)], self._slots[id(plotline)] = self._compute_situation_slots(plotline)
-
-        # A debugging key for reading the stage tracker: each stage's internal id beside its description.
-        # Nothing ever updates it -- it holds this fixed value for the whole game.
-        self._stage_details[id(plotline)] = iw.TrackedItem(
-            name=f"{plotline.name} Stage Details",
-            dataType=iw.TrackedItemDataType.TEXT,
-            visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
-            initialValue="\n".join(_stage_label(stage) for stage in stages),
-        )
 
     def _validate_transitions(self, plotline: Plotline):
         """A transition must have at least one starting stage, and may only reference stages of its own
@@ -649,6 +643,37 @@ class PlotlineHandler:
             for index in range(slot_count)
         ]
         return stage_situations, situation_slots
+
+    def _build_stage_details(self, plotline: Plotline) -> iw.TrackedItem:
+        """A debugging key for reading the plot's hidden state: each stage's internal id beside its
+        description, then each transition's internal id, its start and end stages, and the situation
+        slot it reads at each start, with the situation that slot holds there. Nothing ever updates it
+        -- it holds this fixed value for the whole game.
+
+        A slot is named as `$name`, not as a `<<$name>>` token, which could be swapped for the slot's
+        current text."""
+        stage_situations = self._situations[id(plotline)]
+        slots = self._slots[id(plotline)]
+        lines = ["Stages:", *(_stage_label(stage) for stage in plotline.plot_stages), "Transitions:"]
+        for transition in plotline.plot_transitions:
+            branches = []
+            for stage in _as_list(transition.starting_stage):
+                branch = f"{stage.internal_id!r} -> {transition.ending_stage.internal_id!r}"
+                if transition.trigger_on_scenario is not None:
+                    slot = slots[stage_situations[id(stage)].index(transition.trigger_on_scenario)]
+                    branch += (f" on {slot.as_substitution(brackets=False)}"
+                               f' = "{transition.trigger_on_scenario}"')
+                branches.append(branch)
+            line = f"{transition.internal_id!r}: {', '.join(branches)}"
+            if transition.trigger_on_scenario is None:
+                line += " (no situation)"
+            lines.append(line)
+        return iw.TrackedItem(
+            name=f"{plotline.name} Stage Details",
+            dataType=iw.TrackedItemDataType.TEXT,
+            visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
+            initialValue="\n".join(lines),
+        )
 
     def _tracked_item_effects(self, tracked_items: dict[iw.TrackedItem, str]) -> list[iw.TriggerEffect]:
         """One SET effect per tracked item, setting it to its value."""
