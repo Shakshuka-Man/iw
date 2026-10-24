@@ -251,10 +251,9 @@ world.triggerEvents.append(iw.TriggerEvent(
 # ## Output
 #
 # We can compare what we have generated here and what we have generated in the previous tutorial, and see that the
-# outputted JSONs are identical (except for the ids, which are randomly generated). We can also see that this is a
-# lot more code, and a lot harder to maintain, than just using the plot engine. As we look at the more advanced
-# plot engine features, such as branching plotlines or character specific plotlines, then the automation of the plot
-# engine becomes even more important.
+# outputted JSONs have identical gameplay. We can also see that this is a lot more code, and a lot harder to
+# maintain, than just using the plot engine. As we look at the more advanced plot engine features, such as branching
+# plotlines or character specific plotlines, then the automation of the plot engine becomes even more important.
 
 # %%
 print(world.summary())

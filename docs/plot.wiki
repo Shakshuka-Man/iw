@@ -6,7 +6,7 @@ This page is every object in <code>plot</code>, every attribute on it, and what 
 
 <syntaxhighlight lang="python">
 import iw
-import plot
+from iw import plot
 </syntaxhighlight>
 
 '''None of these objects are in the world format.''' They are the description you write; <code>add_single_plot</code> compiles them down into the tracked items and trigger events of the <code>iw</code> layer, and it is that output the engine ever sees. So a <code>PlotStage</code> has no id and no JSON — it has an <code>internal_id</code>, which is bookkeeping for the compiler.
@@ -24,10 +24,10 @@ import plot
 Each plotline gets, namespaced by its <code>name</code>:
 
 * a hidden '''stage tracker''' (<code>&lt;name&gt; Stage</code>) holding the id of the current stage;
+* a hidden '''stage details''' item (<code>&lt;name&gt; Stage Details</code>) listing every stage's id beside its <code>description</code> — a key for reading the stage tracker.
+* a hidden '''plot engine situation encounters''' item of which situations have triggered each turn.
 * a hidden per-turn '''change gate''' (<code>&lt;name&gt; Change</code>) so the plot advances at most once per turn;
-* a pool of hidden '''situation slots''' (<code>&lt;name&gt; Situation N</code>). The current stage's outgoing scenarios are written into these slots, and transitions reference them via <code>&lt;&lt;…&gt;&gt;</code> — so the engine only ever evaluates a small fixed number of situations per turn, not every scenario in the plot.
-
-Within a plotline the trigger evaluation order is load-bearing: reset gate → start / transitions → stage triggers.
+* a pool of hidden '''situation slots''' (<code>&lt;name&gt; Situation N</code>). The current stage's outgoing scenarios are written into these slots, and transitions reference them via <code>&lt;&lt;$…&gt;&gt;</code> — so the engine only ever evaluates a small fixed number of situations per turn, not every scenario in the plot.
 
 Each stage compiles to '''one trigger per content layer''': the everyone-layer first, then one per character-specific layer, each carrying an <code>ON_CHARACTER</code> condition. Because the character layers are emitted ''after'' the everyone-layer, and a <code>MODIFY_INSTRUCTION_BLOCK</code> effect is a full overwrite, a character layer naming the same block or tracked item simply wins for its characters. That cascade is the whole point: write the shared content once, the per-character delta once.
 
@@ -82,10 +82,10 @@ A state the plot can be in. Its content comes in layers: <code>plot_details</cod
 |-
 | <code>internal_id</code> || `str \ || None` || <code>None</code> || An explicit id; otherwise the compiler assigns one.
 |-
-| <code>description</code> || `str \ || None` || <code>None</code> || Never emitted — it only names the stage in warnings and errors. Write one anyway.
+| <code>description</code> || `str \ || None` || <code>None</code> || Only names the stage — in warnings and errors, and in the debug-only <code>&lt;name&gt; Stage Details</code> item. Write one anyway.
 |}
 
-'''There is no <code>initial</code> flag.''' The plotline starts at whichever stage has no transition into it, and exactly one stage must fit that description — being the start isn't something you declare, it's what the transitions say. Every character starts there.
+'''There is no <code>initial</code> flag.''' By default the plotline starts at whichever stage has no transition into it, and exactly one stage must fit that description — being the start isn't something a stage declares, it's what the transitions say. When they can't say, name it with the plotline's <code>starting_stage</code>. Every character starts there.
 
 '''Give your stages a <code>description</code>.''' It costs nothing, and it is the difference between
 
@@ -163,14 +163,14 @@ A named plot: stages + transitions that advance independently of other plotlines
 |-
 | <code>plot_transitions</code> || <code>list[PlotTransition]</code> || <code>required</code> || Every edge between them.
 |-
-| <code>plot_stage_tracker</code> || `TrackedItem \ || None` || <code>None</code> || The hidden tracked item holding the current stage. Filled in by the compiler.
+| <code>plot_stage_tracker</code> || `TrackedItem \ || None` || <code>None</code> || The hidden tracked item holding the current stage. Left None, the compiler makes one.
 |-
-| <code>plot_change_tracker</code> || `TrackedItem \ || None` || <code>None</code> || The hidden per-turn gate. Filled in by the compiler.
+| <code>plot_change_tracker</code> || `TrackedItem \ || None` || <code>None</code> || The hidden per-turn gate. Left None, the compiler makes one.
 |-
 | <code>starting_stage</code> || `PlotStage \ || None` || <code>None</code> || Where the plot begins. Left out, it is deduced: the one stage nothing transitions into. Name it when the transitions cannot say — a plot that loops back to its opening has no such stage, and one you want to begin partway through has several. The stage tracker's initial value is this stage.
 |}
 
-The two tracker fields are filled in by the compiler. You name the plotline and list its stages and transitions; the trackers are what it compiles ''to''.
+The two tracker fields are optional: left None, the compiler makes them, on its own copy of the plotline (yours stays None). You name the plotline and list its stages and transitions; the trackers are what it compiles ''to''.
 
 == The functions ==
 
@@ -199,7 +199,8 @@ Two things to keep in mind:
 
 == Validation (raises <code>ValueError</code>) ==
 
-* exactly one initial stage per plotline — i.e. exactly one stage with no transition into it. Two means two places to start; none means every stage is downstream of another and the plot can never begin;
+* unless the plotline names a <code>starting_stage</code>, exactly one stage with no transition into it. Two means two places to start; none means every stage is downstream of another and the plot has no way in;
+* a named <code>starting_stage</code> must be one of the plotline's own stages;
 * a stage's <code>plot_details</code> must not name characters;
 * every <code>character_specific_plot_details</code> entry must name at least one character, and a character may appear in at most one of them per stage;
 * <code>can_continue</code> set if and only if <code>end_game</code>;
@@ -240,7 +241,7 @@ This is directional: it only fires for stages '''downstream''' of the one that w
 
 == How the search works ==
 
-The engine's <code>requires</code> gates couple plotlines together: whether a Steam transition can fire depends on where Fire and Water currently stand. So reachability is '''not''' a question about one plotline's graph — a state is the tuple of ''one current stage per plotline'', and the search is a walk over reachable tuples. Nothing ever forces a plotline to advance (it sits at its stage until one of its own transitions fires), which is what lets a character hold one plotline still while advancing another to line up a synergy gate — and what makes the walk a plain BFS.
+The engine's <code>requires</code> gates couple plotlines together: whether a Steam transition can fire depends on where Fire and Water currently stand. So reachability is '''not''' a question about one plotline's graph — a state is the tuple of ''one current stage per plotline'', and the search is a walk over reachable tuples. Nothing ever forces a plotline to advance (it sits at its stage until one of its own transitions fires), which is what lets a character hold one plotline still while advancing another to line up a synergy gate — and what makes the walk a plain depth-first search.
 
 Searching the full product of every plotline would be exponential (80,000 states in <code>worlds/tutorial_plot/5_multiple_plotlines/</code>). It doesn't have to: each plotline is decided against its '''cluster''' — itself plus everything it transitively <code>requires</code>. That cluster is closed (no transition inside it reads a plotline outside it), so the rest of the world provably cannot affect it:
 
@@ -262,5 +263,5 @@ If a plotline's cluster exceeds <code>_MAX_SEARCH_STATES</code> (200,000), the s
 
 == Notes ==
 
-* '''Inputs are not mutated.''' <code>add_single_plot(s)</code> deep-copies the world and the plotlines, so your <code>PlotStage</code> / <code>PlotTransition</code> / <code>Plotline</code> objects are unchanged and safe to reuse across builds.
+* '''Your plot objects are not mutated but the world is.''' <code>add_single_plot(s)</code> deep-copies the plotlines, so your <code>PlotStage</code> / <code>PlotTransition</code> / <code>Plotline</code> objects are unchanged and safe to reuse across builds. The world you pass is changed in place: the compiled tracked items and triggers are added to it.
 * The trigger-ordering and "fires every turn" behaviours rely on the game engine's evaluation semantics; the shapes here are verified structurally against exported worlds, so validate a built world in the engine before relying on it.
