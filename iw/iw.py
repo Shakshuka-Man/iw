@@ -90,6 +90,13 @@ class Inequality(StrEnum):
     NOT_EQUAL = "not_equal"
 
 
+class TextComparison(StrEnum):
+    """How an `ON_TRACKED_ITEM` condition matches its required value. The engine writes one on every
+    tracked-item condition, number items included."""
+    CONTAINS = "contains"
+    DOES_NOT_CONTAIN = "does_not_contain"
+
+
 class EffectType(StrEnum):
     SHOW_MESSAGE = "effectShowMessage"
     GIVE_INFO = "effectGiveInfo"
@@ -162,6 +169,13 @@ class PermissionsOnceShared:
 
 
 @dataclass(eq=False)
+class VideoPromptInstructions:
+    videoPlan: str = ""
+    videoImagePosition: str = ""
+    videoPrompt: str = ""
+
+
+@dataclass(eq=False)
 class PortraitPromptDetails:
     illustrGenre: str = ""
     illustrClothes: str = ""
@@ -225,12 +239,14 @@ class TrackedItem:
         return self.variableName or self.name.replace(" ", "_").lower()
 
     def as_substitution(self, brackets: bool = True) -> str:
-        """This item's `variable_name` wrapped as a `<<...>>` substitution token -- the form used to
-        reference it inside trigger and instruction text."""
+        """This item's `variable_name` wrapped as a `<<$...>>` substitution token -- the form used to
+        reference it inside trigger and instruction text. Without brackets it is `$name`, the form a
+        variable takes inside a larger expression such as `<<($gold*5)+20>>`. The bare `<<name>>` form is
+        obsolete: the engine still accepts it, but only for backwards compatibility."""
         if brackets:
-            return f"<<{self.variable_name}>>"
+            return f"<<${self.variable_name}>>"
         else:
-            return self.variable_name
+            return f"${self.variable_name}"
 
 
 @dataclass(eq=False)
@@ -329,7 +345,7 @@ _OPTIONAL_FIELDS: set[str] = {
     "descriptionRequest", "summaryRequest", "charSelectText",
     "instructionBlocks", "loreBookEntries", "trackedItems", "NPCs",
     "version", "autoAdvanceVersion", "designNotes", "evaluationRequest",
-    "conditions",
+    "conditions", "videoPromptInstructions", "showPawScriptButtons",
 }
 
 
@@ -420,6 +436,7 @@ class World:
 
     imagePromptDetails: ImagePromptDetails = field(default_factory=ImagePromptDetails)
     permissionsOnceShared: PermissionsOnceShared = field(default_factory=PermissionsOnceShared)
+    videoPromptInstructions: Optional[VideoPromptInstructions] = None
 
     allowChangeCharacterName: bool = True
     allowChangeCharacterDescription: bool = True
@@ -430,9 +447,10 @@ class World:
 
     evaluationRequest: str = ""
 
-    schemaVersion: Optional[float] = 2.2
+    schemaVersion: Optional[float] = 2.4
     skills: list[str] = field(default_factory=list)
     hideSkillSystem: bool = False
+    showPawScriptButtons: Optional[bool] = None
     possibleCharacters: list[PossibleCharacter] = field(default_factory=list)
     triggerEvents: list[TriggerEvent] = field(default_factory=list)
     victoryCondition: Optional[VictoryDefeatCondition] = None
@@ -504,7 +522,7 @@ class World:
                 seen.add(value)
 
         duplicates("tracked item", "id", [item.id for item in self.trackedItems])
-        # Names matter as much as ids: a tracked item's name *is* its <<substitution_token>>, so two
+        # Names matter as much as ids: a tracked item's name *is* its <<$substitution_token>>, so two
         # items with the same name give you a token that could mean either.
         duplicates("tracked item", "name", [item.name for item in self.trackedItems])
         duplicates("instruction block", "id", [block.id for block in self.instructionBlocks])

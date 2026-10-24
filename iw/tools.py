@@ -17,6 +17,7 @@ from .iw import (
     ConditionType,
     EffectType,
     Inequality,
+    TextComparison,
     TrackedItem,
     TrackedItemAction,
     TriggerCondition,
@@ -33,8 +34,14 @@ def set_tracked_item(
     item: "TrackedItem | str",
     value: str,
     action: TrackedItemAction = TrackedItemAction.SET,
+    replace_with: str = "",
 ) -> TriggerEffect:
-    """An effect that writes a tracked item: set it, or add to / subtract from it."""
+    """An effect that writes a tracked item: set it, or add to / subtract from it. On a text item, ADD
+    appends -- with nothing in between, so include any line break yourself -- and SUBTRACT removes the
+    text if present. With REPLACE, `value` is the text to find and `replace_with` what to swap in.
+
+    Schema 2.4 adds four keys for writing into part of a structured item. They are written at the values
+    the engine's own export gives a write to the whole item."""
     item_id = _id_of(item)
     return TriggerEffect(
         type=EffectType.SET_TRACKED_ITEM_VALUE,
@@ -42,8 +49,12 @@ def set_tracked_item(
         data={
             "action": action,
             "newValue": value,
-            "replaceWith": "",
+            "replaceWith": replace_with,
             "trackedItemID": item_id,
+            "path": "",
+            "updateMode": "path",
+            "listExpression": "",
+            "targetExpression": "",
         },
     )
 
@@ -52,12 +63,14 @@ def tracked_item_is(
     item: "TrackedItem | str",
     value: str,
     inequality: Inequality = Inequality.IS_EXACTLY,
+    text_comparison: TextComparison = TextComparison.CONTAINS,
 ) -> TriggerCondition:
-    """A condition that reads a tracked item: fire while it is exactly / at least / at most `value`.
+    """A condition that reads a tracked item: fire while it is exactly / at least / at most `value`, or
+    for a text item, while it does or does not contain it.
 
-    Two things match the engine's own export (schema 2.2). The inequality is written into `data` always,
+    Two things match the engine's own export (schema 2.4). The inequality is written into `data` always,
     and *also* alongside it -- but only when it is not `IS_EXACTLY`, the default it does not write down.
-    And `textComparison` is `"contains"`: the engine puts it on every tracked-item condition, text or
+    And `textComparison` is always written: the engine puts it on every tracked-item condition, text or
     number. Text items in fact have no exact match -- only `contains` / `does_not_contain` -- so a
     condition that omits `textComparison` is dropped on import."""
     item_id = _id_of(item)
@@ -70,6 +83,6 @@ def tracked_item_is(
             "inequality": inequality,
             "requiredValue": value,
             "trackedItemID": item_id,
-            "textComparison": "contains",
+            "textComparison": text_comparison,
         },
     )

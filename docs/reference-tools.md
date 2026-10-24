@@ -10,10 +10,10 @@ The basic tutorials build triggers from the raw `iw` objects; the advanced tutor
 
 ## The functions
 
-### `set_tracked_item(item: TrackedItem | str, value: str, action: TrackedItemAction = TrackedItemAction.SET) -> TriggerEffect`
+### `set_tracked_item(item: TrackedItem | str, value: str, action: TrackedItemAction = TrackedItemAction.SET, replace_with: str = '') -> TriggerEffect`
 
-An effect that writes a tracked item: set it, or add to / subtract from it.
+An effect that writes a tracked item: set it, or add to / subtract from it. On a text item, ADD appends -- with nothing in between, so include any line break yourself -- and SUBTRACT removes the text if present. With REPLACE, `value` is the text to find and `replace_with` what to swap in.
 
-### `tracked_item_is(item: TrackedItem | str, value: str, inequality: Inequality = Inequality.IS_EXACTLY) -> TriggerCondition`
+### `tracked_item_is(item: TrackedItem | str, value: str, inequality: Inequality = Inequality.IS_EXACTLY, text_comparison: TextComparison = TextComparison.CONTAINS) -> TriggerCondition`
 
-A condition that reads a tracked item: fire while it is exactly / at least / at most `value`.
+A condition that reads a tracked item: fire while it is exactly / at least / at most `value`, or for a text item, while it does or does not contain it.

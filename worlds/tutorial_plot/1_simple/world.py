@@ -122,7 +122,7 @@ STAGE_4.plot_details = plot.PlotStageDetails(
 
 # %% [markdown]
 #
-# Now that we have created everything needed for our plot, we can add it to our world. Using `plot.add_plot`
+# Now that we have created everything needed for our plot, we can add it to our world. Using `plot.add_single_plot`
 # will create all the tracked items, triggers and other behind-the-scenes machinery to make this plot work.
 
 # %%
