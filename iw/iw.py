@@ -57,6 +57,7 @@ class TrackedItemDataType(StrEnum):
 class TrackedItemVisibility(StrEnum):
     EVERYONE = "everyone"
     AI_ONLY = "ai_only"
+    AI_ONLY_BORING = "ai_only_boring"
     PLAYER_ONLY = "player_only"
     HIDDEN = "hidden"
     HIDDEN_BORING = "hidden_boring"
@@ -284,6 +285,7 @@ class TriggerEffect:
     data: Any
     id: str = field(default_factory=_id.next_uuid)
     trackedItemID: Optional[str] = None
+    name: Optional[str] = None
 
 
 @dataclass(eq=False)
@@ -452,6 +454,7 @@ class World:
     version: str = "0.01"
     autoAdvanceVersion: bool = True
     designNotes: Optional[str] = None
+    showPawScriptButtons: bool = False
 
     def summary(self) -> str:
         """A readable account of what is in this world. Print it before and after a change to see
