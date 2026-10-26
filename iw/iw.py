@@ -347,7 +347,7 @@ _OPTIONAL_FIELDS: set[str] = {
     "descriptionRequest", "summaryRequest", "charSelectText",
     "instructionBlocks", "loreBookEntries", "trackedItems", "NPCs",
     "version", "autoAdvanceVersion", "designNotes", "evaluationRequest",
-    "conditions", "videoPromptInstructions", "showPawScriptButtons",
+    "videoPromptInstructions", "showPawScriptButtons",
 }
 
 
@@ -457,8 +457,9 @@ class World:
     triggerEvents: list[TriggerEvent] = field(default_factory=list)
     victoryCondition: Optional[VictoryDefeatCondition] = None
     defeatCondition: Optional[VictoryDefeatCondition] = None
-    # The named events this world recognises. A trigger fires on one by putting the same string in an
-    # `ON_EVENT` condition's `data`, so this is the vocabulary those conditions draw on.
+    # The named events this world recognizes. A trigger fires on one by putting the same string in an
+    # `ON_EVENT` condition's `data`, so this is the vocabulary those conditions draw on. You need not
+    # fill it in: to_dict adds every `ON_EVENT` string the triggers use, after any listed here.
     conditions: list[str] = field(default_factory=list)
 
     # Optional fields — only included in JSON when non-default
@@ -598,6 +599,22 @@ class World:
         for key in ("trackedItems", "NPCs"):
             for i, item in enumerate(result.get(key, [])):
                 item["positionInList"] = i
+
+        # The engine's export lists every distinct `ON_EVENT` string in `conditions`, in the order the
+        # triggers first use it. Nothing else keeps it in step with the triggers, so it is derived here,
+        # after anything listed by hand -- and written even when empty.
+        events = list(self.conditions)
+
+        def collect_events(conditions: list[TriggerCondition]) -> None:
+            for condition in conditions:
+                if condition.category == "logic" and isinstance(condition.data, list):
+                    collect_events(condition.data)                   # a nested AND/OR group
+                elif condition.type == ConditionType.ON_EVENT:
+                    events.append(condition.data)
+
+        for trigger in self.triggerEvents:
+            collect_events(trigger.triggerConditions)
+        result["conditions"] = list(dict.fromkeys(events))
         return result
 
     def to_json(self) -> str:

@@ -244,6 +244,8 @@ Where an item's starting value comes from is a whole topic of its own — see In
 | <code>id</code> || <code>str</code> || <code>auto</code> || Its own id.
 |-
 | <code>trackedItemID</code> || <code>Optional[str]</code> || <code>None</code> || The item written, repeated outside <code>data</code> — both copies must agree.
+|-
+| <code>name</code> || <code>Optional[str]</code> || <code>None</code> || 
 |}
 
 The engine fills in extra keys on some payloads that you do not have to write: <code>path</code>/<code>updateMode</code> on <code>PRESENT_CHOICE</code>, <code>path</code> on <code>REQUEST_INPUT</code>, and <code>alreadyFired</code> on a victory/defeat condition. <code>SET_TRACKED_ITEM_VALUE</code> carries four more — <code>path</code>, <code>updateMode</code>, <code>listExpression</code> and <code>targetExpression</code> — and <code>set_tracked_item</code> writes those for you.
@@ -379,7 +381,7 @@ Set either a <code>type</code> (a leaf condition) or <code>category="logic"</cod
 |-
 | <code>hideSkillSystem</code> || <code>bool</code> || <code>False</code> || Hides skills from the player entirely.
 |-
-| <code>showPawScriptButtons</code> || <code>Optional[bool]</code> || <code>None</code> || Shows the PawScript (<code>$</code>-script) buttons. Omitted unless set, so the engine keeps its own default.
+| <code>showPawScriptButtons</code> || <code>bool</code> || <code>False</code> || Shows the PawScript (<code>$</code>-script) buttons. Omitted unless set, so the engine keeps its own default.
 |-
 | <code>possibleCharacters</code> || <code>list[PossibleCharacter]</code> || <code>[]</code> || The playable characters to choose between.
 |-
@@ -389,7 +391,7 @@ Set either a <code>type</code> (a leaf condition) or <code>category="logic"</cod
 |-
 | <code>defeatCondition</code> || <code>Optional[VictoryDefeatCondition]</code> || <code>None</code> || How the world is lost.
 |-
-| <code>conditions</code> || <code>list[str]</code> || <code>[]</code> || The named events this world recognises. An <code>ON_EVENT</code> condition fires on one by carrying the same string in its <code>data</code>, so this is the vocabulary those conditions draw on rather than each of them inventing its own wording.
+| <code>conditions</code> || <code>list[str]</code> || <code>[]</code> || The named events this world recognizes. An <code>ON_EVENT</code> condition fires on one by carrying the same string in its <code>data</code>, so this is the vocabulary those conditions draw on rather than each of them inventing its own wording. You need not fill it in: on export the library adds every <code>ON_EVENT</code> string the triggers use, in first-use order, after any you list yourself — and always writes it, even empty.
 |-
 | <code>descriptionRequest</code> || <code>str</code> || <code>''</code> || Instructions for generating the world description.
 |-
@@ -460,6 +462,8 @@ harbourmaster = iw.NPC(name="The Harbourmaster", detail="Keeper of the tide tabl
 | <code>EVERYONE</code> || <code>everyone</code> || Shown to the player and given to the AI. || <code>iw.TrackedItem(name="Mood", visibility=iw.TrackedItemVisibility.EVERYONE)</code>
 |-
 | <code>AI_ONLY</code> || <code>ai_only</code> || Given to the AI, never shown to the player. || <code>iw.TrackedItem(name="Suspicion", visibility=iw.TrackedItemVisibility.AI_ONLY)</code>
+|-
+| <code>AI_ONLY_BORING</code> || <code>ai_only_boring</code> ||  || ``
 |-
 | <code>PLAYER_ONLY</code> || <code>player_only</code> || Shown to the player, withheld from the AI. || <code>iw.TrackedItem(name="Notes", visibility=iw.TrackedItemVisibility.PLAYER_ONLY)</code>
 |-
