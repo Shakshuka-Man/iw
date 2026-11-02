@@ -5,7 +5,7 @@ items, tirgger events, and other interconnect systems grows, the web interface b
 unwieldy. This repo contains tools for developing worlds programatically, unlocking the ability to use
 python scripting when developing the world.
 
-You can find the browser interface for these tools [here](https://shakshuka-man.github.io/iw/lab/index.html).
+The repository where the code lives can be found [here](https://github.com/Shakshuka-Man/iw). You can find the browser interface for these tools [here](https://shakshuka-man.github.io/iw/lab/index.html), where you can play around without having to download or run anything locally.
 
 ```python
 import iw
