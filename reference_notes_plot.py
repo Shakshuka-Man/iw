@@ -53,11 +53,18 @@ Each plotline gets, namespaced by its `name`:
 - a hidden **stage tracker** (`<name> Stage`) holding the id of the current stage;
 - a hidden **stage details** item (`<name> Stage Details`) listing every stage's id beside its `description` — a
   key for reading the stage tracker.
-- a hidden **plot engine situation encounters** item of which situations have triggered each turn.
+- a hidden **plot engine situation encounters** item of which situations the AI marked as happened each
+  turn.
 - a hidden per-turn **change gate** (`<name> Change`) so the plot advances at most once per turn;
-- a pool of hidden **situation slots** (`<name> Situation N`). The current stage's outgoing scenarios are
-  written into these slots, and transitions reference them via `<<$…>>` — so the engine only ever
-  evaluates a small fixed number of situations per turn, not every scenario in the plot.
+- a pool of **situation slots**, each a pair of tracked items: `<name> Situation N Info` (text, `N/A`
+  while idle) names the situation the slot is watching for, and `<name> Situation N Trigger` (a number,
+  0) is what a transition fires on. While the current stage uses a slot, its trigger is hidden,
+  AI-updated, and told to become 1 when that situation is true; idle, it is boring and not updated. So
+  the AI only ever updates a small fixed number of items per turn, not one per scenario in the plot.
+
+The stage triggers set every slot's trigger back to 0, every turn. They are emitted after the
+transitions, so a transition always reads what the AI marked before the reset clears it — and a
+situation counts only on the turn it happens: if its transition can't fire that turn, the mark is gone.
 
 
 Each stage compiles to **one trigger per content layer**: the everyone-layer first, then one per
@@ -66,8 +73,8 @@ emitted *after* the everyone-layer, and a `MODIFY_INSTRUCTION_BLOCK` effect is a
 character layer naming the same block or tracked item simply wins for its characters. That cascade is the
 whole point: write the shared content once, the per-character delta once.
 
-These extra triggers are cheap — they test tracked items and the chosen character, not LLM-evaluated
-situations, so they don't grow the situation-slot pool.\
+These extra triggers are cheap — they test tracked items and the chosen character, not situations, so
+they don't grow the situation-slot pool.\
 """
 
 CLASS_NOTES = {

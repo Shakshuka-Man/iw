@@ -30,7 +30,10 @@ class PlotStageDetails:
     tracked_items: dict[iw.TrackedItem, str] = field(default_factory=dict)
     additional_effects: list[iw.TriggerEffect] = field(default_factory=list)
 
-@dataclass
+# PlotStage, PlotTransition and Plotline are `eq=False`: each is an identity, not a value -- two stages
+# with the same content are still two places the plot can be -- so they compare and hash by identity,
+# and can key a dict or sit in a set as themselves.
+@dataclass(eq=False)
 class PlotStage:
     """A state the plot can be in. Its content comes in layers: `plot_details` is what everyone sees
     while the plot is here (so it must not name characters), and each entry in
@@ -53,7 +56,7 @@ class PlotStage:
     internal_id: str | None = None
     description: str | None = None
 
-@dataclass
+@dataclass(eq=False)
 class PlotTransition:
     starting_stage: PlotStage | list[PlotStage]
     ending_stage: PlotStage
@@ -77,7 +80,7 @@ class PlotTransition:
     characters: iw.PossibleCharacter | list[iw.PossibleCharacter] = field(default_factory=list)
     internal_id: str | None = None
 
-@dataclass
+@dataclass(eq=False)
 class Plotline:
     """A named plot: stages + transitions that advance independently of other plotlines, with its own
     stage tracker, per-turn gate, and situation-slot pool (all namespaced by `name`). The trackers are
@@ -121,6 +124,141 @@ def _stage_label(stage: PlotStage) -> str:
     return repr(stage.internal_id)
 
 
+@dataclass(eq=False)
+class _SituationSlot:
+    """One of a plotline's situation slots. At each stage it watches for one of that stage's outgoing
+    situations, or for nothing. It is two tracked items: `info` names the situation being watched for,
+    and `trigger` is a number the AI sets to 1 when that situation happens. While the slot is idle, the
+    trigger is boring and not AI-updated, so the AI only ever updates the few slots the current stage
+    uses, never one per situation in the plot.
+
+    Nothing the AI does sets `trigger` back to 0. The stage triggers do that every turn (see `reset`),
+    after everything that reads it."""
+    number: int                    # 1-based: names the slot, and labels it in the encounter log
+    info: iw.TrackedItem
+    trigger: iw.TrackedItem
+
+    @classmethod
+    def create(cls, plotline_name: str, number: int) -> _SituationSlot:
+        """A new, idle slot: info "N/A", trigger 0, both hidden and boring."""
+        return cls(
+            number=number,
+            info=iw.TrackedItem(
+                name=f"{plotline_name} Situation {number} Info",
+                dataType=iw.TrackedItemDataType.TEXT,
+                visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
+                initialValue="N/A",
+            ),
+            trigger=iw.TrackedItem(
+                name=f"{plotline_name} Situation {number} Trigger",
+                dataType=iw.TrackedItemDataType.NUMBER,
+                visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
+                initialValue="0",
+            ),
+        )
+
+    def happened(self) -> iw.TriggerCondition:
+        """A fresh condition: the AI has marked the situation the slot is watching as happened."""
+        return tools.tracked_item_is(self.trigger, "1", iw.Inequality.AT_LEAST)
+
+    def watch(self, situation: str | None) -> list[iw.TriggerEffect]:
+        """Effects pointing the slot at `situation`: its info shows it, and its trigger is made hidden
+        (not boring) and AI-updated, with instructions to become 1 when the situation is true. Given
+        None, the slot goes idle: info "N/A", trigger boring and no longer AI-updated. Its update
+        instructions are then left as they were -- with auto-update off they do nothing.
+
+        Neither touches the trigger's value; that is `reset`'s job."""
+        watching = situation is not None
+        return [
+            tools.set_tracked_item(self.info, situation if watching else "N/A"),
+            iw.TriggerEffect(
+                type=iw.EffectType.MODIFY_TRACKED_ITEM_DETAILS,
+                trackedItemID=self.trigger.id,
+                data={
+                    "trackedItemID": self.trigger.id,
+                    "overrideName": False,
+                    "name": "",
+                    "overrideDescription": False,
+                    "description": "",
+                    "overrideVisibility": True,
+                    "visibility": (iw.TrackedItemVisibility.HIDDEN if watching
+                                   else iw.TrackedItemVisibility.HIDDEN_BORING),
+                    "overrideAutoUpdate": True,
+                    "autoUpdate": watching,
+                    "overrideUpdateInstructions": watching,
+                    "updateInstructions": (f"Set this to 1 whenever the following statement is true:\n"
+                                           f"`{situation}`" if watching else ""),
+                },
+            ),
+        ]
+
+    def reset(self) -> iw.TriggerEffect:
+        """An effect setting the trigger back to 0, ready for the AI to mark the next turn."""
+        return tools.set_tracked_item(self.trigger, "0")
+
+
+@dataclass(eq=False)
+class _SituationSlotPool:
+    """A plotline's situation slots, and which slot watches for which situation at each stage. The pool
+    is sized to the stage with the most distinct outgoing situations; at every stage, its i-th situation
+    goes to slot i."""
+    slots: list[_SituationSlot]
+    held_at: dict[PlotStage, dict[str, _SituationSlot]]   # stage -> {situation: the slot holding it there}
+
+    @classmethod
+    def for_plotline(cls, plotline: Plotline) -> _SituationSlotPool:
+        """Deal each stage's distinct outgoing situations, in the order its transitions are listed, into
+        a pool sized to the busiest stage. Expects the plotline's transitions to have been validated, so
+        every starting stage is one of its own."""
+        stage_situations: dict[PlotStage, list[str]] = {stage: [] for stage in plotline.plot_stages}
+        for transition in plotline.plot_transitions:
+            if transition.trigger_on_scenario is None:
+                continue
+            for stage in _as_list(transition.starting_stage):
+                situations = stage_situations[stage]
+                if transition.trigger_on_scenario not in situations:
+                    situations.append(transition.trigger_on_scenario)
+        slot_count = max((len(situations) for situations in stage_situations.values()), default=0)
+        slots = [_SituationSlot.create(plotline.name, number) for number in range(1, slot_count + 1)]
+        held_at = {
+            stage: {situation: slots[index] for index, situation in enumerate(situations)}
+            for stage, situations in stage_situations.items()
+        }
+        return cls(slots, held_at)
+
+    def slot_for(self, stage: PlotStage, situation: str) -> _SituationSlot:
+        """The slot watching for `situation` while the plot is at `stage`."""
+        return self.held_at[stage][situation]
+
+    def watch(self, stage: PlotStage) -> list[iw.TriggerEffect]:
+        """Effects pointing every slot at `stage`'s situations: each slot watches for the situation it
+        holds there, and any slot the stage does not use goes idle."""
+        holding = {slot: situation for situation, slot in self.held_at[stage].items()}
+        return [effect for slot in self.slots for effect in slot.watch(holding.get(slot))]
+
+    def reset(self) -> list[iw.TriggerEffect]:
+        """Effects setting every slot's trigger back to 0."""
+        return [slot.reset() for slot in self.slots]
+
+
+@dataclass(eq=False)
+class _CompiledPlotline:
+    """Everything the handler works out for one plotline, all resolved: the trackers it compiles to
+    (yours if you supplied them, otherwise made for it), its situation slots, the stage it opens at, and
+    its debug-only stage details item."""
+    plotline: Plotline                 # the handler's deep copy
+    stage_tracker: iw.TrackedItem
+    change_tracker: iw.TrackedItem     # the shared one, under shared_gate
+    situations: _SituationSlotPool
+    initial_stage: PlotStage
+    stage_details: iw.TrackedItem
+
+    def at_stage(self, stage: PlotStage) -> iw.TriggerCondition:
+        """A fresh condition: the stage tracker is exactly at `stage`. Built per call because every
+        condition carries its own id."""
+        return tools.tracked_item_is(self.stage_tracker, str(stage.internal_id))
+
+
 class PlotlineHandler:
     """Builds the tracked items and trigger events that implement one or more plotlines on top of the
     raw `iw` trigger machinery. Construct with a world and a list of Plotlines, then call `run()` to
@@ -146,9 +284,9 @@ class PlotlineHandler:
         seen = set()
         for plotline in self.plotlines:
             for item in [*plotline.plot_stages, *plotline.plot_transitions]:
-                if id(item) in seen:
+                if item in seen:
                     raise ValueError("A plot stage or transition appears in more than one plotline.")
-                seen.add(id(item))
+                seen.add(item)
 
         self.shared_change_tracker = None
         if shared_gate:
@@ -159,7 +297,7 @@ class PlotlineHandler:
                 initialValue="1",
             )
 
-        # Debugging only: the situations the engine judged to have happened this turn, across every
+        # Debugging only: the situations the AI marked as having happened this turn, across every
         # plotline. The first reset trigger of each turn restarts it; one trigger per slot appends to it.
         self.situation_encounters_tracker = iw.TrackedItem(
             name="Plot engine situation encounters",
@@ -167,38 +305,24 @@ class PlotlineHandler:
             visibility=iw.TrackedItemVisibility.HIDDEN_BORING,
         )
 
-        # Per-plotline derived state, keyed by id(plotline). The trackers themselves are resolved in
-        # place on each Plotline (see _setup_plotline); these dicts hold the rest.
-        self._slots: dict[int, list[iw.TrackedItem]] = {}          # situation-slot pool
-        self._stage_details: dict[int, iw.TrackedItem] = {}        # every stage's id and description
-        self._situations: dict[int, dict[int, list[str]]] = {}     # id(stage) -> ordered situations
-        self._initial: dict[int, PlotStage] = {}                   # id(plotline) -> its initial stage
-        self.stage_owner: dict[int, Plotline] = {}                 # id(stage) -> owning plotline
+        self.stage_owner: dict[PlotStage, Plotline] = {}           # stage -> owning plotline
+        self._compiled: dict[Plotline, _CompiledPlotline] = {}     # plotline -> what it compiles to
 
-        # Phase 1: set every plotline up before any triggers are built, so cross-plotline `requires`
-        # references can be resolved in phase 3 (run()).
+        # Phase 1: check each plotline on its own and number its stages and transitions, recording which
+        # plotline owns each stage. A transition's stages and its `requires` may name any plotline's
+        # stages, so nothing can be compiled until every owner is known.
         for plotline in self.plotlines:
             self._setup_plotline(plotline)
             for stage in plotline.plot_stages:
-                self.stage_owner[id(stage)] = plotline
+                self.stage_owner[stage] = plotline
 
-        # Phase 2: with every stage's owner known, check each plotline's transitions are well-formed and
-        # work out where it starts (which the transitions define), then search the whole plot for content
-        # nobody can ever reach. Reachability is cross-plotline (a `requires` gate reads other plotlines'
-        # stages), so it runs over all of them at once.
+        # Phase 2: with every stage's owner known, check each plotline's transitions are well-formed, then
+        # compile it. Then search the whole plot for content nobody can ever reach. Reachability is
+        # cross-plotline (a `requires` gate reads other plotlines' stages), so it runs over all of them at
+        # once.
         for plotline in self.plotlines:
             self._validate_transitions(plotline)
-            # Built only now: its transition lines look up each starting stage's slots, which needs the
-            # transitions known to start in this plotline.
-            self._stage_details[id(plotline)] = self._build_stage_details(plotline)
-            initial = self._find_initial_stage(plotline)
-            self._initial[id(plotline)] = initial
-            # The tracker starts at the opening stage, rather than at a sentinel the start-of-game
-            # trigger then replaces. Written here rather than where the tracker is made because which
-            # stage is the opening one is not known until the transitions have been read -- and written
-            # even to a tracker you supplied, since a plot whose tracker starts elsewhere is at a stage
-            # it never entered.
-            plotline.plot_stage_tracker.initialValue = str(initial.internal_id)
+            self._compiled[plotline] = self._compile_plotline(plotline)
 
         # Content warnings first, so they are still emitted if reachability then finds a hard error.
         self._warn_contested_targets()
@@ -264,26 +388,47 @@ class PlotlineHandler:
                     f"can_continue may only be set on an end_game transition (plotline {plotline.name!r})."
                 )
 
-        # Resolve the trackers in place, namespaced by the plotline name.
-        if plotline.plot_stage_tracker is None:
-            plotline.plot_stage_tracker = iw.TrackedItem(
+        self._assign_internal_ids(stages, transitions)
+
+    def _compile_plotline(self, plotline: Plotline) -> _CompiledPlotline:
+        """Resolve the plotline's trackers -- the ones you supplied, otherwise new ones namespaced by its
+        name -- and work out its situation slots, the stage it opens at, and its stage details item.
+        Needs its transitions validated first."""
+        initial_stage = self._find_initial_stage(plotline)
+
+        stage_tracker = plotline.plot_stage_tracker
+        if stage_tracker is None:
+            stage_tracker = iw.TrackedItem(
                 name=f"{plotline.name} Stage",
                 dataType=iw.TrackedItemDataType.NUMBER,
                 visibility=iw.TrackedItemVisibility.HIDDEN,
-                initialValue="0",
             )
-        if self.shared_gate:
-            plotline.plot_change_tracker = self.shared_change_tracker
-        elif plotline.plot_change_tracker is None:
-            plotline.plot_change_tracker = iw.TrackedItem(
-                name=f"{plotline.name} Change",
-                dataType=iw.TrackedItemDataType.NUMBER,
-                visibility=iw.TrackedItemVisibility.HIDDEN,
-                initialValue="1",
-            )
+        # The tracker starts at the opening stage, rather than at a sentinel the start-of-game trigger
+        # then replaces -- even a tracker you supplied, since a plot whose tracker starts elsewhere is at a
+        # stage it never entered.
+        stage_tracker.initialValue = str(initial_stage.internal_id)
 
-        self._assign_internal_ids(stages, transitions)
-        self._situations[id(plotline)], self._slots[id(plotline)] = self._compute_situation_slots(plotline)
+        if self.shared_gate:
+            change_tracker = self.shared_change_tracker
+        else:
+            change_tracker = plotline.plot_change_tracker
+            if change_tracker is None:
+                change_tracker = iw.TrackedItem(
+                    name=f"{plotline.name} Change",
+                    dataType=iw.TrackedItemDataType.NUMBER,
+                    visibility=iw.TrackedItemVisibility.HIDDEN,
+                    initialValue="1",
+                )
+
+        situations = _SituationSlotPool.for_plotline(plotline)
+        return _CompiledPlotline(
+            plotline=plotline,
+            stage_tracker=stage_tracker,
+            change_tracker=change_tracker,
+            situations=situations,
+            initial_stage=initial_stage,
+            stage_details=self._build_stage_details(plotline, situations),
+        )
 
     def _validate_transitions(self, plotline: Plotline):
         """A transition must have at least one starting stage, and may only reference stages of its own
@@ -296,7 +441,7 @@ class PlotlineHandler:
                     f"A PlotTransition must have at least one starting stage (plotline {plotline.name!r})."
                 )
             for stage in starting_stages + [transition.ending_stage]:
-                if self.stage_owner.get(id(stage)) is not plotline:
+                if self.stage_owner.get(stage) is not plotline:
                     raise ValueError(
                         f"A PlotTransition in plotline {plotline.name!r} references a stage that is "
                         "not in that plotline."
@@ -335,25 +480,25 @@ class PlotlineHandler:
                     stacklevel=2,
                 )
 
-    def _downstream_stages(self, plotline: Plotline) -> dict[int, set[int]]:
-        """id(stage) -> the id()s of the stages reachable from it along this plotline's transitions.
-        Deliberately ignores character gates and `requires`: for a warning about stale content we want
-        every stage the plot could land on afterwards, not only those one character can force."""
-        edges: dict[int, list[PlotStage]] = {}
+    def _downstream_stages(self, plotline: Plotline) -> dict[PlotStage, set[PlotStage]]:
+        """stage -> the stages reachable from it along this plotline's transitions. Deliberately ignores
+        character gates and `requires`: for a warning about stale content we want every stage the plot
+        could land on afterwards, not only those one character can force."""
+        edges: dict[PlotStage, list[PlotStage]] = {}
         for transition in plotline.plot_transitions:
             for start in _as_list(transition.starting_stage):
-                edges.setdefault(id(start), []).append(transition.ending_stage)
-        downstream: dict[int, set[int]] = {}
+                edges.setdefault(start, []).append(transition.ending_stage)
+        downstream: dict[PlotStage, set[PlotStage]] = {}
         for stage in plotline.plot_stages:
-            seen: set[int] = set()
-            frontier = list(edges.get(id(stage), []))
+            seen: set[PlotStage] = set()
+            frontier = list(edges.get(stage, []))
             while frontier:
                 later = frontier.pop()
-                if id(later) in seen:
+                if later in seen:
                     continue
-                seen.add(id(later))
-                frontier.extend(edges.get(id(later), []))
-            downstream[id(stage)] = seen
+                seen.add(later)
+                frontier.extend(edges.get(later, []))
+            downstream[stage] = seen
         return downstream
 
     def _warn_stale_content(self, plotline: Plotline):
@@ -363,16 +508,18 @@ class PlotlineHandler:
         plot has already left. The usual fix is to have every stage of a plotline write the same set of
         blocks and items."""
         downstream = self._downstream_stages(plotline)
-        written = {id(stage): self._written_targets(stage) for stage in plotline.plot_stages}
-        by_id = {id(stage): stage for stage in plotline.plot_stages}
-        reported: set[tuple[int, str]] = set()
+        written = {stage: self._written_targets(stage) for stage in plotline.plot_stages}
+        reported: set[tuple[PlotStage, str]] = set()
         for stage in plotline.plot_stages:
-            for target_id, label in written[id(stage)].items():
-                for later_id in downstream[id(stage)]:
-                    if target_id in written[later_id] or (later_id, target_id) in reported:
+            # In the order the stages are listed, so the warnings come out in a fixed order -- not the
+            # order of a set, which follows memory addresses.
+            later_stages = [later for later in plotline.plot_stages if later in downstream[stage]]
+            for target_id, label in written[stage].items():
+                for later in later_stages:
+                    if target_id in written[later] or (later, target_id) in reported:
                         continue
-                    reported.add((later_id, target_id))
-                    later_label = _stage_label(by_id[later_id])
+                    reported.add((later, target_id))
+                    later_label = _stage_label(later)
                     warnings.warn(
                         f"{label} is set at stage {_stage_label(stage)} of plotline {plotline.name!r}, "
                         f"but stage {later_label} -- which the plot can reach from there -- never sets "
@@ -391,15 +538,15 @@ class PlotlineHandler:
         downstream of another, so the plot has no way in (you have wired a closed cycle) -- which is
         legal, but only once you say where to enter it."""
         if plotline.starting_stage is not None:
-            if not any(stage is plotline.starting_stage for stage in plotline.plot_stages):
+            if plotline.starting_stage not in plotline.plot_stages:
                 raise ValueError(
                     f"Plotline {plotline.name!r} names a starting_stage "
                     f"({_stage_label(plotline.starting_stage)}) that is not one of its own stages."
                 )
             return plotline.starting_stage
 
-        targeted = {id(transition.ending_stage) for transition in plotline.plot_transitions}
-        candidates = [stage for stage in plotline.plot_stages if id(stage) not in targeted]
+        targeted = {transition.ending_stage for transition in plotline.plot_transitions}
+        candidates = [stage for stage in plotline.plot_stages if stage not in targeted]
         if len(candidates) != 1:
             found = ", ".join(_stage_label(stage) for stage in candidates) or "none"
             raise ValueError(
@@ -410,43 +557,42 @@ class PlotlineHandler:
             )
         return candidates[0]
 
-    def _plotline_dependencies(self) -> dict[int, set[int]]:
-        """id(plotline) -> the id()s of the *other* plotlines it reads: those owning a stage named in one
-        of its transitions' `requires`. A plotline that reads nobody advances entirely on its own, so it
-        can be decided without looking at any other plotline."""
-        dependencies: dict[int, set[int]] = {id(plotline): set() for plotline in self.plotlines}
+    def _plotline_dependencies(self) -> dict[Plotline, set[Plotline]]:
+        """plotline -> the *other* plotlines it reads: those owning a stage named in one of its
+        transitions' `requires`. A plotline that reads nobody advances entirely on its own, so it can be
+        decided without looking at any other plotline."""
+        dependencies: dict[Plotline, set[Plotline]] = {plotline: set() for plotline in self.plotlines}
         for plotline in self.plotlines:
             for transition in plotline.plot_transitions:
                 for stage in transition.requires:
-                    owner = self.stage_owner.get(id(stage))
+                    owner = self.stage_owner.get(stage)
                     if owner is None:
                         raise ValueError(
                             "A PlotTransition 'requires' a stage that is not in any plotline."
                         )
                     if owner is not plotline:
-                        dependencies[id(plotline)].add(id(owner))
+                        dependencies[plotline].add(owner)
         return dependencies
 
-    def _cluster(self, plotline: Plotline, dependencies: dict[int, set[int]]) -> list[Plotline]:
+    def _cluster(self, plotline: Plotline, dependencies: dict[Plotline, set[Plotline]]) -> list[Plotline]:
         """The smallest group of plotlines that must be searched together to decide `plotline`: itself
         plus everything it transitively `requires`. The group is closed -- no transition inside it reads
         a plotline outside it -- so the rest of the world cannot affect it and can be ignored. That is
         what keeps this tractable: in the martial-arts world, Fire reads nobody (5 states), Steam reads
         Fire and Water (50), and only Victory needs all four base arts (1250) -- never the 80,000 of the
         full product. A `requires` cycle between plotlines simply lands them in the same group."""
-        by_id = {id(p): p for p in self.plotlines}
-        group = {id(plotline)}
-        frontier = [id(plotline)]
+        group = {plotline}
+        frontier = [plotline]
         while frontier:
             current = frontier.pop()
             for dependency in dependencies[current]:
                 if dependency not in group:
                     group.add(dependency)
                     frontier.append(dependency)
-        return [p for p in self.plotlines if id(p) in group]  # stable order
+        return [p for p in self.plotlines if p in group]  # stable order
 
     def _transition_enabled(self, transition: PlotTransition, plotline: Plotline, state: tuple,
-                            slot: dict[int, int], character) -> bool:
+                            position: dict[Plotline, int], character) -> bool:
         """Can `transition` fire in this state, for this character? `trigger_on_scenario` and
         `additional_conditions` are assumed satisfiable -- we only judge what we can actually decide: the
         character gate, the starting stage, and the `requires` gates (OR within a plotline, AND across
@@ -454,17 +600,18 @@ class PlotlineHandler:
         allowed = [c.characterId for c in _as_list(transition.characters)]
         if allowed and (character is None or character.characterId not in allowed):
             return False
-        if state[slot[id(plotline)]] not in {id(s) for s in _as_list(transition.starting_stage)}:
+        if state[position[plotline]] not in _as_list(transition.starting_stage):
             return False
-        groups: dict[int, set[int]] = {}
+        groups: dict[Plotline, set[PlotStage]] = {}
         for stage in transition.requires:
-            groups.setdefault(id(self.stage_owner[id(stage)]), set()).add(id(stage))
-        return all(state[slot[owner]] in stages for owner, stages in groups.items())
+            groups.setdefault(self.stage_owner[stage], set()).add(stage)
+        return all(state[position[owner]] in stages for owner, stages in groups.items())
 
-    def _explore(self, cluster: list[Plotline], character) -> tuple[set[int], set[int], bool]:
-        """Search every way one character can advance the plotlines in `cluster`, returning the id()s of
-        the stages they can reach, the id()s of the transitions that can fire, and whether the search
-        completed (False if it hit the state cap).
+    def _explore(self, cluster: list[Plotline],
+                 character) -> tuple[set[PlotStage], set[PlotTransition], bool]:
+        """Search every way one character can advance the plotlines in `cluster`, returning the stages
+        they can reach, the transitions that can fire, and whether the search completed (False if it hit
+        the state cap).
 
         A state is one current stage per plotline in the cluster -- the product, because a `requires`
         gate reads where the *other* plotlines stand, so a transition's availability is a property of the
@@ -475,24 +622,24 @@ class PlotlineHandler:
 
         A transition that ends the game for good (`end_game` with `can_continue` False) is recorded as
         firing, but its resulting state is never expanded -- nothing can advance after it."""
-        slot = {id(plotline): index for index, plotline in enumerate(cluster)}
-        start = tuple(id(self._initial[id(plotline)]) for plotline in cluster)
+        position = {plotline: index for index, plotline in enumerate(cluster)}   # its place in a state
+        start = tuple(self._compiled[plotline].initial_stage for plotline in cluster)
         seen_states = {start}
         reached_stages = set(start)
-        fired_transitions: set[int] = set()
+        fired_transitions: set[PlotTransition] = set()
         frontier = [start]
         while frontier:
             state = frontier.pop()
             for plotline in cluster:
                 for transition in plotline.plot_transitions:
-                    if not self._transition_enabled(transition, plotline, state, slot, character):
+                    if not self._transition_enabled(transition, plotline, state, position, character):
                         continue
-                    fired_transitions.add(id(transition))
-                    reached_stages.add(id(transition.ending_stage))
+                    fired_transitions.add(transition)
+                    reached_stages.add(transition.ending_stage)
                     if transition.end_game and not transition.can_continue:
                         continue
                     advanced = list(state)
-                    advanced[slot[id(plotline)]] = id(transition.ending_stage)
+                    advanced[position[plotline]] = transition.ending_stage
                     advanced = tuple(advanced)
                     if advanced not in seen_states:
                         if len(seen_states) >= _MAX_SEARCH_STATES:
@@ -512,21 +659,20 @@ class PlotlineHandler:
         dependencies = self._plotline_dependencies()
         characters = self.world.possibleCharacters or [None]
 
-        # (id(plotline), characterId) -> what that character can reach / fire in that plotline. A
-        # plotline is 'undetermined' if its search hit the state cap; we then say nothing about it
-        # rather than reporting errors we cannot stand behind.
-        reached: dict[tuple[int, str | None], set[int]] = {}
-        fired: dict[tuple[int, str | None], set[int]] = {}
-        undetermined: set[int] = set()
+        # (plotline, characterId) -> what that character can reach / fire in that plotline. A plotline
+        # is 'undetermined' if its search hit the state cap; we then say nothing about it rather than
+        # reporting errors we cannot stand behind.
+        reached: dict[tuple[Plotline, str | None], set[PlotStage]] = {}
+        fired: dict[tuple[Plotline, str | None], set[PlotTransition]] = {}
+        undetermined: set[Plotline] = set()
         for plotline in self.plotlines:
             cluster = self._cluster(plotline, dependencies)
             for character in characters:
-                key = (id(plotline), character.characterId if character is not None else None)
+                key = (plotline, character.characterId if character is not None else None)
                 reached[key], fired[key], complete = self._explore(cluster, character)
                 if not complete:
-                    undetermined.add(id(plotline))
-        for plotline_id in undetermined:
-            plotline = next(p for p in self.plotlines if id(p) == plotline_id)
+                    undetermined.add(plotline)
+        for plotline in (p for p in self.plotlines if p in undetermined):   # in a fixed order
             warnings.warn(
                 f"Plotline {plotline.name!r} depends on too many other plotlines to search "
                 f"({_MAX_SEARCH_STATES:,}+ possible states), so its reachability could not be fully "
@@ -537,9 +683,9 @@ class PlotlineHandler:
             # The search is what normally reports an unreachable stage, and it did not run. A stage with
             # nothing transitioning into it that is not where the plot begins is unreachable on the
             # transitions alone, so say that much without searching.
-            targeted = {id(transition.ending_stage) for transition in plotline.plot_transitions}
+            targeted = {transition.ending_stage for transition in plotline.plot_transitions}
             for stage in plotline.plot_stages:
-                if id(stage) not in targeted and stage is not self._initial[plotline_id]:
+                if stage not in targeted and stage is not self._compiled[plotline].initial_stage:
                     warnings.warn(
                         f"Stage {_stage_label(stage)} of plotline {plotline.name!r} has no transition "
                         "into it and is not where the plot begins, so nothing can ever reach it.",
@@ -549,13 +695,13 @@ class PlotlineHandler:
 
         errors: list[str] = []
         for plotline in self.plotlines:
-            if id(plotline) in undetermined:
+            if plotline in undetermined:
                 continue
             for character in characters:
-                key = (id(plotline), character.characterId if character is not None else None)
+                key = (plotline, character.characterId if character is not None else None)
                 who = f"Character {character.name!r}" if character is not None else "The player"
                 for stage in plotline.plot_stages:
-                    if id(stage) in reached[key]:
+                    if stage in reached[key]:
                         continue
                     warnings.warn(
                         f"{who} can never reach stage {_stage_label(stage)} of plotline "
@@ -572,7 +718,7 @@ class PlotlineHandler:
                                 "reach that stage."
                             )
                 for transition in plotline.plot_transitions:
-                    if _names_character(character, transition.characters) and id(transition) not in fired[key]:
+                    if _names_character(character, transition.characters) and transition not in fired[key]:
                         errors.append(
                             f"Transition {transition.internal_id!r} of plotline {plotline.name!r} (into "
                             f"stage {_stage_label(transition.ending_stage)}) is restricted to "
@@ -582,14 +728,14 @@ class PlotlineHandler:
                         )
 
             for stage in plotline.plot_stages:
-                if not any(id(stage) in reached[(id(plotline), c.characterId if c is not None else None)]
+                if not any(stage in reached[(plotline, c.characterId if c is not None else None)]
                            for c in characters):
                     errors.append(
                         f"Stage {_stage_label(stage)} of plotline {plotline.name!r} is unreachable: no "
                         "character can ever reach it."
                     )
             for transition in plotline.plot_transitions:
-                if not any(id(transition) in fired[(id(plotline), c.characterId if c is not None else None)]
+                if not any(transition in fired[(plotline, c.characterId if c is not None else None)]
                            for c in characters):
                     errors.append(
                         f"Transition {transition.internal_id!r} of plotline {plotline.name!r} (into stage "
@@ -620,31 +766,7 @@ class PlotlineHandler:
                     item.internal_id = str(next_id)
                     used.add(str(next_id))
 
-    def _compute_situation_slots(self, plotline: Plotline):
-        """For each stage, the ordered distinct outgoing situations; a slot pool sized to the busiest
-        stage. Every situation is read from one of these shared hidden text slots, so the engine only
-        evaluates this plotline's slot pool, not every situation in it."""
-        stage_situations = {id(stage): [] for stage in plotline.plot_stages}
-        for transition in plotline.plot_transitions:
-            if transition.trigger_on_scenario is None:
-                continue
-            for stage in _as_list(transition.starting_stage):
-                situations = stage_situations.get(id(stage))
-                if situations is not None and transition.trigger_on_scenario not in situations:
-                    situations.append(transition.trigger_on_scenario)
-        slot_count = max((len(situations) for situations in stage_situations.values()), default=0)
-        situation_slots = [
-            iw.TrackedItem(
-                name=f"{plotline.name} Situation {index + 1}",
-                dataType=iw.TrackedItemDataType.TEXT,
-                visibility=iw.TrackedItemVisibility.HIDDEN,
-                initialValue=" ",
-            )
-            for index in range(slot_count)
-        ]
-        return stage_situations, situation_slots
-
-    def _build_stage_details(self, plotline: Plotline) -> iw.TrackedItem:
+    def _build_stage_details(self, plotline: Plotline, situations: _SituationSlotPool) -> iw.TrackedItem:
         """A debugging key for reading the plot's hidden state: each stage's internal id beside its
         description, then each transition's internal id, its start and end stages, and the situation
         slot it reads at each start, with the situation that slot holds there. Nothing ever updates it
@@ -652,16 +774,14 @@ class PlotlineHandler:
 
         A slot is named as `$name`, not as a `<<$name>>` token, which could be swapped for the slot's
         current text."""
-        stage_situations = self._situations[id(plotline)]
-        slots = self._slots[id(plotline)]
         lines = ["Stages:", *(_stage_label(stage) for stage in plotline.plot_stages), "Transitions:"]
         for transition in plotline.plot_transitions:
             branches = []
             for stage in _as_list(transition.starting_stage):
                 branch = f"{stage.internal_id!r} -> {transition.ending_stage.internal_id!r}"
                 if transition.trigger_on_scenario is not None:
-                    slot = slots[stage_situations[id(stage)].index(transition.trigger_on_scenario)]
-                    branch += (f" on {slot.as_substitution(brackets=False)}"
+                    slot = situations.slot_for(stage, transition.trigger_on_scenario)
+                    branch += (f" on {slot.trigger.as_substitution(brackets=False)}"
                                f' = "{transition.trigger_on_scenario}"')
                 branches.append(branch)
             line = f"{transition.internal_id!r}: {', '.join(branches)}"
@@ -710,13 +830,6 @@ class PlotlineHandler:
             data=[character.characterId for character in characters],
         )]
 
-    def _at_stage_condition(self, plotline: Plotline, stage: PlotStage) -> iw.TriggerCondition:
-        """A fresh condition: `plotline`'s stage tracker is exactly at `stage`. Built per call because
-        every condition carries its own id."""
-        tracker = plotline.plot_stage_tracker
-        assert tracker is not None  # resolved during setup
-        return tools.tracked_item_is(tracker, str(stage.internal_id))
-
     def _layer_trigger_name(self, base: str, details: PlotStageDetails) -> str:
         """A layer's trigger name: the stage's name, plus the characters it is scoped to (if any)."""
         characters = _as_list(details.characters)
@@ -724,31 +837,20 @@ class PlotlineHandler:
             return base
         return f"{base} ({', '.join(character.name for character in characters)})"
 
-    def _slot_effects(self, plotline: Plotline, stage: PlotStage) -> list[iw.TriggerEffect]:
-        """One SET effect per situation slot: slot i holds this stage's i-th outgoing situation, with
-        any leftover slots set to a single space so they stay inert."""
-        situations = self._situations[id(plotline)][id(stage)]
-        return [
-            tools.set_tracked_item(slot, situations[index] if index < len(situations) else " ")
-            for index, slot in enumerate(self._slots[id(plotline)])
-        ]
-
     def _synergy_conditions(self, transition: PlotTransition) -> list[iw.TriggerCondition]:
         """Resolve `requires` into conditions on other plotlines' stage trackers. Required stages are
         grouped by their owning plotline: within a plotline they are OR'd (any listed stage qualifies);
         the per-plotline groups are then AND'd in with the rest of the transition's conditions."""
-        groups: dict[int, list[PlotStage]] = {}
-        owners: dict[int, Plotline] = {}
+        groups: dict[Plotline, list[PlotStage]] = {}
         for stage in transition.requires:
-            owner = self.stage_owner.get(id(stage))
+            owner = self.stage_owner.get(stage)
             if owner is None:
                 raise ValueError("A PlotTransition 'requires' a stage that is not in any plotline.")
-            groups.setdefault(id(owner), []).append(stage)
-            owners[id(owner)] = owner
+            groups.setdefault(owner, []).append(stage)
 
         conditions = []
-        for owner_id, stages in groups.items():
-            matches = [self._at_stage_condition(owners[owner_id], stage) for stage in stages]
+        for owner, stages in groups.items():
+            matches = [self._compiled[owner].at_stage(stage) for stage in stages]
             if len(matches) == 1:
                 conditions.append(matches[0])
             else:
@@ -781,55 +883,55 @@ class PlotlineHandler:
             triggerEffects=effects,
         )
 
-    def _build_encounter_triggers(self, plotline: Plotline) -> list[iw.TriggerEvent]:
-        """One debugging trigger per situation slot: whenever the slot's situation happens, append the
-        slot's number and its current text to the situation-encounter log. Emitted before the stage
-        triggers, which rewrite the slots on the turn a transition fires -- after them, the log would
-        show the next stage's situations rather than the one just encountered."""
+    def _build_encounter_triggers(self, compiled: _CompiledPlotline) -> list[iw.TriggerEvent]:
+        """One debugging trigger per situation slot: whenever the AI has marked the slot's situation as
+        happened, append the slot's number and the situation it was watching for to the
+        situation-encounter log. Emitted before the stage triggers, which set every trigger back to 0
+        and, on the turn a transition fires, point the slots at the next stage's situations -- after
+        them, the log would record nothing, or the wrong situation."""
         return [
             iw.TriggerEvent(
-                name=f"{plotline.name} Situation {index + 1}: log encounter",
+                name=f"{compiled.plotline.name} Situation {slot.number}: log encounter",
                 canTriggerMoreThanOnce=True,
-                triggerConditions=[iw.TriggerCondition(
-                    type=iw.ConditionType.ON_EVENT,
-                    category="condition",
-                    data=slot.as_substitution(),
-                )],
+                triggerConditions=[slot.happened()],
                 triggerEffects=[tools.set_tracked_item(
                     self.situation_encounters_tracker,
-                    f"\n{index + 1}: {slot.as_substitution()}",
+                    f"\n{slot.number}: {slot.info.as_substitution()}",
                     iw.TrackedItemAction.ADD,
                 )],
             )
-            for index, slot in enumerate(self._slots[id(plotline)])
+            for slot in compiled.situations.slots
         ]
 
-    def _build_start_triggers(self, plotline: Plotline, stage: PlotStage) -> list[iw.TriggerEvent]:
+    def _build_start_triggers(self, compiled: _CompiledPlotline) -> list[iw.TriggerEvent]:
         """Set the stage tracker and apply the opening stage's content, before the first turn and on any
         later turn the plot is back at that stage. The first trigger runs for whichever character was
-        chosen -- it carries the stage tracker, the situation slots, and the everyone-layer's content.
-        Each character-specific layer then gets its own trigger, emitted after it so it can override the
-        same blocks and items.
+        chosen -- it carries the stage tracker, the everyone-layer's content, and points the situation
+        slots at the opening stage's situations. Each character-specific layer then gets its own
+        trigger, emitted after it so it can override the same blocks and items.
 
         Gated on being at the stage, exactly as every other stage's triggers are. Without that condition
         a mid-game firing would drag the plot back to its opening every turn; with it, a plot that loops
-        round to where it began is served the same way it was on turn one."""
-        stage_tracker = plotline.plot_stage_tracker
-        assert stage_tracker is not None  # resolved during setup
+        round to where it began is served the same way it was on turn one.
 
+        It never sets the slots' triggers back to 0. It is emitted before the transitions and fires
+        mid-game whenever the plot is at its opening stage, so a reset here would wipe what the AI
+        marked before the opening stage's transitions could read it. The stage triggers reset them
+        instead, after the transitions."""
+        stage = compiled.initial_stage
         base_effects = [
-            tools.set_tracked_item(stage_tracker, str(stage.internal_id)),
-        ] + self._slot_effects(plotline, stage)
+            tools.set_tracked_item(compiled.stage_tracker, str(stage.internal_id)),
+        ] + compiled.situations.watch(stage)
         if stage.plot_details is not None:
             base_effects = self._content_effects(stage.plot_details) + base_effects
 
-        name = f"{plotline.name}: start of game (stage {stage.internal_id})"
+        name = f"{compiled.plotline.name}: start of game (stage {stage.internal_id})"
         triggers = [iw.TriggerEvent(
             name=name,
             triggerOnStartOfGame=True,
             triggerMidGame=True,
             canTriggerMoreThanOnce=True,
-            triggerConditions=[self._at_stage_condition(plotline, stage)],
+            triggerConditions=[compiled.at_stage(stage)],
             triggerEffects=base_effects,
         )]
         for details in stage.character_specific_plot_details:
@@ -839,37 +941,27 @@ class PlotlineHandler:
                 triggerMidGame=True,
                 canTriggerMoreThanOnce=True,
                 triggerConditions=[
-                    self._at_stage_condition(plotline, stage),
+                    compiled.at_stage(stage),
                     *self._character_conditions(details),
                 ],
                 triggerEffects=self._content_effects(details),
             ))
         return triggers
 
-    def _build_transition_trigger(self, plotline: Plotline, transition: PlotTransition) -> iw.TriggerEvent:
+    def _build_transition_trigger(self, compiled: _CompiledPlotline,
+                                  transition: PlotTransition) -> iw.TriggerEvent:
         """Build the trigger for a single transition: require this plotline's gate open and the plot at
         one of the starting stage(s) (plus the scenario, character, synergy `requires`, and any extra
         conditions), then claim the gate, advance the stage tracker, and run the transition's effects."""
         starting_stages = _as_list(transition.starting_stage)
-        ending_number = transition.ending_stage.internal_id
-        stage_tracker = plotline.plot_stage_tracker
-        change_tracker = plotline.plot_change_tracker
-        assert stage_tracker is not None and change_tracker is not None  # resolved during setup
-        stage_situations = self._situations[id(plotline)]
-        slots = self._slots[id(plotline)]
 
-        # Per starting stage: the plot is at that stage, and (if there's a scenario) the slot holding
-        # that scenario for that stage has fired.
+        # Per starting stage: the plot is at that stage, and (if there's a scenario) the AI has marked the
+        # slot watching for that scenario at that stage.
         branches = []
         for stage in starting_stages:
-            branch = [self._at_stage_condition(plotline, stage)]
+            branch = [compiled.at_stage(stage)]
             if transition.trigger_on_scenario is not None:
-                slot = slots[stage_situations[id(stage)].index(transition.trigger_on_scenario)]
-                branch.append(iw.TriggerCondition(
-                    type=iw.ConditionType.ON_EVENT,
-                    category="condition",
-                    data=slot.as_substitution(),
-                ))
+                branch.append(compiled.situations.slot_for(stage, transition.trigger_on_scenario).happened())
             branches.append(branch)
 
         if len(branches) == 1:
@@ -890,7 +982,7 @@ class PlotlineHandler:
 
         and_conditions = [
             # Require this plotline's per-turn gate to be open.
-            tools.tracked_item_is(change_tracker, "0"),
+            tools.tracked_item_is(compiled.change_tracker, "0"),
             *starting_conditions,
         ]
         if transition.characters:
@@ -921,9 +1013,9 @@ class PlotlineHandler:
 
         effects = [
             # Claim the per-turn gate so no later transition in this plotline advances this turn.
-            tools.set_tracked_item(change_tracker, "1"),
+            tools.set_tracked_item(compiled.change_tracker, "1"),
             # Advance the stage tracker to this transition's ending stage.
-            tools.set_tracked_item(stage_tracker, str(ending_number)),
+            tools.set_tracked_item(compiled.stage_tracker, str(transition.ending_stage.internal_id)),
             # Set once, here, rather than every turn like a stage's tracked items.
             *self._tracked_item_effects(transition.tracked_items),
         ]
@@ -936,28 +1028,31 @@ class PlotlineHandler:
         effects.extend(transition.additional_effects)
 
         return iw.TriggerEvent(
-            name=f"{plotline.name} Transition {transition.internal_id}",
+            name=f"{compiled.plotline.name} Transition {transition.internal_id}",
             canTriggerMoreThanOnce=True,
             advancedLogic=advanced_logic or None,
             triggerConditions=conditions,
             triggerEffects=effects,
         )
 
-    def _build_stage_triggers(self, plotline: Plotline, stage: PlotStage) -> list[iw.TriggerEvent]:
+    def _build_stage_triggers(self, compiled: _CompiledPlotline, stage: PlotStage) -> list[iw.TriggerEvent]:
         """Build the triggers for a single stage: whenever the tracker reaches the stage's id, apply its
         content. Not gated on the change tracker, so they fire the same turn a transition arrives. The
-        first trigger carries the situation slots and the everyone-layer's content; each
-        character-specific layer follows, adding a character condition so it overrides the same blocks
-        and items for its characters only."""
-        base_effects = self._slot_effects(plotline, stage)
+        first trigger carries the everyone-layer's content, points the situation slots at the stage's
+        situations, and sets every slot's trigger back to 0; each character-specific layer follows,
+        adding a character condition so it overrides the same blocks and items for its characters only.
+
+        That reset is why the stage triggers come last: by the time they run, the encounter log and the
+        transitions have read whatever the AI marked."""
+        base_effects = compiled.situations.watch(stage) + compiled.situations.reset()
         if stage.plot_details is not None:
             base_effects = self._content_effects(stage.plot_details) + base_effects
 
-        name = f"{plotline.name} Stage {stage.internal_id}"
+        name = f"{compiled.plotline.name} Stage {stage.internal_id}"
         triggers = [iw.TriggerEvent(
             name=name,
             canTriggerMoreThanOnce=True,
-            triggerConditions=[self._at_stage_condition(plotline, stage)],
+            triggerConditions=[compiled.at_stage(stage)],
             triggerEffects=base_effects,
         )]
         for details in stage.character_specific_plot_details:
@@ -965,7 +1060,7 @@ class PlotlineHandler:
                 name=self._layer_trigger_name(name, details),
                 canTriggerMoreThanOnce=True,
                 triggerConditions=[
-                    self._at_stage_condition(plotline, stage),
+                    compiled.at_stage(stage),
                     *self._character_conditions(details),
                 ],
                 triggerEffects=self._content_effects(details),
@@ -977,20 +1072,23 @@ class PlotlineHandler:
 
         Within a plotline, triggers are evaluated top-to-bottom, once per turn, so order is
         load-bearing: reset (opens the gate) -> situation logging -> start/transitions (advance) ->
-        stage triggers (apply content). Plotlines are emitted in order; with a shared gate there is one
-        reset up front."""
+        stage triggers (apply content, then set the situation triggers back to 0). The logging and the
+        transitions read the situation triggers, so their reset must come after both -- which is why it
+        is in the stage triggers, and never in the start trigger. Plotlines are emitted in order; with a
+        shared gate there is one reset up front."""
         # Add the trackers. One already in the world (a tracker you supplied and added yourself) is the
         # item the engine reads, so it takes the initial value resolved onto our copy -- for a stage
-        # tracker, the opening stage (see __init__). Left as it was, the plot would start nowhere.
+        # tracker, the opening stage (see _compile_plotline). Left as it was, the plot would start nowhere.
         trackers = [self.situation_encounters_tracker]
         if self.shared_gate:
             trackers.append(self.shared_change_tracker)
-        for plotline in self.plotlines:
-            trackers.append(plotline.plot_stage_tracker)
-            trackers.append(self._stage_details[id(plotline)])
+        for compiled in self._compiled.values():
+            trackers.append(compiled.stage_tracker)
+            trackers.append(compiled.stage_details)
             if not self.shared_gate:
-                trackers.append(plotline.plot_change_tracker)
-            trackers.extend(self._slots[id(plotline)])
+                trackers.append(compiled.change_tracker)
+            for slot in compiled.situations.slots:
+                trackers.extend([slot.info, slot.trigger])
         for tracker in trackers:
             existing = next((item for item in self.world.trackedItems if item.id == tracker.id), None)
             if existing is None:
@@ -1001,16 +1099,17 @@ class PlotlineHandler:
         triggers = []
         if self.shared_gate:
             triggers.append(self._build_reset_trigger(self.shared_change_tracker, "Plot", starts_turn=True))
-        for plotline in self.plotlines:
+        for compiled in self._compiled.values():
+            plotline = compiled.plotline
             if not self.shared_gate:
-                triggers.append(self._build_reset_trigger(plotline.plot_change_tracker, plotline.name,
+                triggers.append(self._build_reset_trigger(compiled.change_tracker, plotline.name,
                                                           starts_turn=plotline is self.plotlines[0]))
-            triggers.extend(self._build_encounter_triggers(plotline))
-            triggers.extend(self._build_start_triggers(plotline, self._initial[id(plotline)]))
+            triggers.extend(self._build_encounter_triggers(compiled))
+            triggers.extend(self._build_start_triggers(compiled))
             for transition in plotline.plot_transitions:
-                triggers.append(self._build_transition_trigger(plotline, transition))
+                triggers.append(self._build_transition_trigger(compiled, transition))
             for stage in plotline.plot_stages:
-                triggers.extend(self._build_stage_triggers(plotline, stage))
+                triggers.extend(self._build_stage_triggers(compiled, stage))
         self.world.triggerEvents.extend(triggers)
 
 
