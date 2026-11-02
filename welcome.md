@@ -7,6 +7,8 @@ and it is gone.
 Every world here is a notebook. Run one and it writes a world JSON that you can paste straight into
 Infinite Worlds.
 
+If you want to see the repo where this code lives and run it locally, the repo can be found [here](https://github.com/Shakshuka-Man/iw).
+
 ## Try it now
 
 1. Open the first tutorial: [worlds / tutorial_iw / 1_simple_world](worlds/tutorial_iw/1_simple_world/world.ipynb).
@@ -112,7 +114,7 @@ The one change from those guides: wherever they have you create a new project, *
 open that folder instead**.
 
 ```bash
-git clone <this repository> && cd iw
+git clone https://github.com/Shakshuka-Man/iw.git && cd iw
 python build.py --list                       # every world, and where it lives
 python build.py tutorial_iw_5_triggers       # build one -> out/tutorial_iw_5_triggers.json
 python build.py                              # build them all
