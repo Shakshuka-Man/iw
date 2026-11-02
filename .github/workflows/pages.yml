@@ -98,7 +98,7 @@ jobs:
 
   deploy:
     # A pull request gets built, to catch breakage, but only main is published.
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: ${{ !cancelled() && needs.build.result == 'success' && github.ref == 'refs/heads/main' }}
     needs: build
     runs-on: ubuntu-latest
     environment:
