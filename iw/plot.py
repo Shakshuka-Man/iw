@@ -181,7 +181,7 @@ class _SituationSlot:
                     "overrideDescription": False,
                     "description": "",
                     "overrideVisibility": True,
-                    "visibility": (iw.TrackedItemVisibility.HIDDEN if watching
+                    "visibility": (iw.TrackedItemVisibility.AI_ONLY if watching
                                    else iw.TrackedItemVisibility.HIDDEN_BORING),
                     "overrideAutoUpdate": True,
                     "autoUpdate": watching,
